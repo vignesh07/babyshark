@@ -1511,6 +1511,11 @@ mod tests {
         assert!(STREAM_SEARCH_MODAL_HELP.contains("n/N"));
         assert!(STREAM_SEARCH_MODAL_HELP.contains("Tab"));
     }
+
+    #[test]
+    fn fmt_hexdump_offset_uses_placeholder_for_huge_offsets() {
+        assert_eq!(fmt_hexdump_offset(0x1_0000), "0x??????  ");
+    }
 }
 
 const STREAM_SEARCH_MODAL_TITLE: &str = "Stream search";
