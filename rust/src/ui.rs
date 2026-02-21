@@ -458,6 +458,7 @@ fn fmt_hexdump_offset(offset: usize) -> &'static str {
     // Precompute offsets for 0..=0xFFFF (more than enough for typical small captures).
     // If we ever exceed this, fall back to a formatted string.
     const MAX: usize = HEXDUMP_OFFSET_LUT_MAX;
+    debug_assert!(MAX == HEXDUMP_OFFSET_LUT_MAX);
 
     static LUT: OnceLock<Box<[Box<str>]>> = OnceLock::new();
     let lut = LUT.get_or_init(|| {
