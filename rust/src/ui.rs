@@ -1791,6 +1791,7 @@ mod tests {
 
         // With no selected flow, refresh_stream_match_count() should be a no-op.
         assert_eq!(app.stream_match_count, 99);
+        assert!(matches!(app.view, View::Stream));
     }
 }
 
