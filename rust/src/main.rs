@@ -14,7 +14,7 @@ fn main() -> Result<()> {
 
     let rows = babyshark::pcap::read_pcap(&args.pcap)?;
     let flows = babyshark::flow::FlowIndex::build(&rows);
-    let mut app = babyshark::ui::App::new(rows, flows);
+    let mut app = babyshark::ui::App::new(&args.pcap, rows, flows);
 
     babyshark::ui::run_tui(&mut app)?;
     Ok(())

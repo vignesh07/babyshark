@@ -1,3 +1,4 @@
+use crate::casefile::CaseFile;
 use crate::flow::{FlowIndex, FlowStats};
 use crate::pcap::{FlowDir, PacketRow};
 use crate::stream::{build_stream, StreamData};
@@ -13,6 +14,7 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap};
 use ratatui::Terminal;
 use std::io::{self, Stdout};
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 // --- Theme (deep ocean) ---
@@ -49,7 +51,17 @@ pub enum StreamTab {
     Combined,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Modal {
+    None,
+    Filter,
+    Bookmark,
+}
+
 pub struct App {
+    pub pcap_path: PathBuf,
+    pub casefile: CaseFile,
+
     pub rows: Vec<PacketRow>,
     pub flows: FlowIndex,
 
@@ -61,7 +73,11 @@ pub struct App {
 
     // filter
     pub filter: FlowFilter,
-    pub filter_mode: bool,
+
+    // bookmark
+    pub bookmark_note: String,
+
+    pub modal: Modal,
 
     // stream view state
     pub stream_tab: StreamTab,
@@ -69,15 +85,21 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(rows: Vec<PacketRow>, flows: FlowIndex) -> Self {
+    pub fn new(pcap_path: impl AsRef<Path>, rows: Vec<PacketRow>, flows: FlowIndex) -> Self {
+        let pcap_path = pcap_path.as_ref().to_path_buf();
+        let casefile = CaseFile::load_or_new(&pcap_path).unwrap_or_default();
+
         let mut app = App {
+            pcap_path,
+            casefile,
             rows,
             flows,
             view: View::Flows,
             selected_row: 0,
             visible_flow_indices: Vec::new(),
             filter: FlowFilter::default(),
-            filter_mode: false,
+            bookmark_note: String::new(),
+            modal: Modal::None,
             stream_tab: StreamTab::Combined,
             stream_scroll: 0,
         };
@@ -165,28 +187,111 @@ impl App {
         self.recompute_visible();
     }
 
-    fn enter_filter_mode(&mut self) {
-        self.filter_mode = true;
+    fn open_filter(&mut self) {
+        self.modal = Modal::Filter;
     }
 
-    fn exit_filter_mode(&mut self) {
-        self.filter_mode = false;
-        self.recompute_visible();
+    fn open_bookmark(&mut self) {
+        self.modal = Modal::Bookmark;
+        self.bookmark_note.clear();
     }
 
-    fn filter_push(&mut self, c: char) {
-        self.filter.query.push(c);
-        self.recompute_visible();
+    fn close_modal_apply(&mut self) {
+        match self.modal {
+            Modal::Filter => {
+                self.recompute_visible();
+            }
+            Modal::Bookmark => {
+                if let Some(fl) = self.selected_flow() {
+                    let key = fl.label();
+                    self.casefile
+                        .upsert_bookmark(&key, &key, self.bookmark_note.trim());
+                    let _ = self.casefile.save(&self.pcap_path);
+                }
+            }
+            Modal::None => {}
+        }
+        self.modal = Modal::None;
     }
 
-    fn filter_pop(&mut self) {
-        self.filter.query.pop();
-        self.recompute_visible();
+    fn close_modal_cancel(&mut self) {
+        self.modal = Modal::None;
     }
 
-    fn filter_clear(&mut self) {
-        self.filter.query.clear();
-        self.recompute_visible();
+    fn modal_push(&mut self, c: char) {
+        match self.modal {
+            Modal::Filter => {
+                self.filter.query.push(c);
+                self.recompute_visible();
+            }
+            Modal::Bookmark => {
+                self.bookmark_note.push(c);
+            }
+            Modal::None => {}
+        }
+    }
+
+    fn modal_pop(&mut self) {
+        match self.modal {
+            Modal::Filter => {
+                self.filter.query.pop();
+                self.recompute_visible();
+            }
+            Modal::Bookmark => {
+                self.bookmark_note.pop();
+            }
+            Modal::None => {}
+        }
+    }
+
+    fn modal_clear(&mut self) {
+        match self.modal {
+            Modal::Filter => {
+                self.filter.query.clear();
+                self.recompute_visible();
+            }
+            Modal::Bookmark => {
+                self.bookmark_note.clear();
+            }
+            Modal::None => {}
+        }
+    }
+
+    fn export_report(&mut self) -> Result<PathBuf> {
+        let dir = crate::casefile::case_dir_for_pcap(&self.pcap_path);
+        std::fs::create_dir_all(&dir)?;
+        let out = dir.join("report.md");
+
+        let mut md = String::new();
+        md.push_str("# babyshark report\n\n");
+        md.push_str(&format!("PCAP: `{}`\n\n", self.pcap_path.display()));
+        md.push_str(&format!("Flows (visible): **{}**\n\n", self.visible_flow_indices.len()));
+
+        if !self.casefile.bookmarks.is_empty() {
+            md.push_str("## Bookmarks\n\n");
+            for b in &self.casefile.bookmarks {
+                md.push_str(&format!("- **{}** — {}\n", b.flow_label, b.note));
+            }
+            md.push_str("\n");
+        }
+
+        if let Some(fl) = self.selected_flow() {
+            md.push_str("## Selected flow\n\n");
+            md.push_str(&format!("- {}\n", fl.label()));
+            md.push_str(&format!("- packets: {}\n", fl.total_packets));
+            md.push_str(&format!("- bytes: {}\n\n", fl.total_bytes));
+
+            let s: StreamData = build_stream(&self.rows, fl);
+            md.push_str("### Stream (A→B)\n\n```\n");
+            md.push_str(&String::from_utf8_lossy(&s.a_to_b));
+            md.push_str("\n```\n\n");
+            md.push_str("### Stream (B→A)\n\n```\n");
+            md.push_str(&String::from_utf8_lossy(&s.b_to_a));
+            md.push_str("\n```\n\n");
+        }
+
+        std::fs::write(&out, md)?;
+        Ok(out)
     }
 }
 
@@ -230,7 +335,10 @@ fn bytes_to_pretty_text(bytes: &[u8]) -> Text<'static> {
             .collect::<String>();
         lines.push(Line::from(vec![
             Span::styled(format!("{:08x}  ", offset), Style::default().fg(c_muted())),
-            Span::styled(format!("{:<47}", hex), Style::default().fg(Color::Rgb(170, 180, 200))),
+            Span::styled(
+                format!("{:<47}", hex),
+                Style::default().fg(Color::Rgb(170, 180, 200)),
+            ),
             Span::raw("  "),
             Span::styled(ascii, Style::default().fg(c_text())),
         ]));
@@ -276,7 +384,10 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
             );
 
             let header = Paragraph::new(Line::from(vec![
-                Span::styled("babyshark", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "babyshark",
+                    Style::default().fg(c_accent()).add_modifier(Modifier::BOLD),
+                ),
                 Span::raw("  "),
                 Span::styled(title, Style::default().fg(c_text()).add_modifier(Modifier::BOLD)),
                 Span::raw("  "),
@@ -337,7 +448,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         .block(
                             Block::default()
                                 .borders(Borders::ALL)
-                                .title("Flows  (Enter packets, / filter, t/u toggles)")
+                                .title("Flows  (Enter packets, / filter, t/u toggles, b bookmark, E export)")
                                 .style(Style::default().bg(c_panel())),
                         )
                         .highlight_style(
@@ -372,7 +483,10 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                 Span::styled(dir, Style::default().fg(c_accent())),
                                 Span::raw(" "),
                                 Span::styled(format!("#{:<4} ", r.index), Style::default().fg(c_muted())),
-                                Span::styled(format!("{:>4}B ", r.len), Style::default().fg(Color::Rgb(190, 200, 220))),
+                                Span::styled(
+                                    format!("{:>4}B ", r.len),
+                                    Style::default().fg(Color::Rgb(190, 200, 220)),
+                                ),
                                 Span::styled(r.summary.clone(), Style::default().fg(c_text())),
                             ]);
                             ListItem::new(line)
@@ -425,6 +539,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
             let detail = if let Some(fl) = app.selected_flow() {
                 let a = format!("A→B: {} pkts / {} bytes", fl.a_to_b.packets, fl.a_to_b.bytes);
                 let b = format!("B→A: {} pkts / {} bytes", fl.b_to_a.packets, fl.b_to_a.bytes);
+                let bookmarks = app.casefile.bookmarks.len();
                 vec![
                     Line::from(vec![Span::styled(
                         fl.label(),
@@ -433,23 +548,36 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     Line::from(Span::raw("")),
                     Line::from(Span::styled(a, Style::default().fg(c_muted()))),
                     Line::from(Span::styled(b, Style::default().fg(c_muted()))),
+                    Line::from(Span::raw("")),
+                    Line::from(vec![
+                        Span::styled("bookmarks: ", Style::default().fg(c_muted())),
+                        Span::raw(format!("{bookmarks}")),
+                    ]),
                 ]
             } else {
                 vec![Line::from(Span::styled("No flows decoded.", Style::default().fg(c_muted())))]
             };
 
-            let detail = Paragraph::new(detail)
-                .block(Block::default().borders(Borders::ALL).title("Details").style(Style::default().bg(c_panel())));
+            let detail = Paragraph::new(detail).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Details")
+                    .style(Style::default().bg(c_panel())),
+            );
             f.render_widget(detail, body_chunks[1]);
 
-            let footer_line = if app.filter_mode {
-                Line::from(vec![
+            let footer_line = match app.modal {
+                Modal::Filter => Line::from(vec![
                     Span::styled("FILTER", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
                     Span::raw("  "),
-                    Span::styled("type to filter, Enter apply, Esc cancel, Ctrl+u clear", Style::default().fg(c_muted())),
-                ])
-            } else {
-                match app.view {
+                    Span::styled("type, Enter apply, Esc cancel, Ctrl+u clear", Style::default().fg(c_muted())),
+                ]),
+                Modal::Bookmark => Line::from(vec![
+                    Span::styled("BOOKMARK", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
+                    Span::raw("  "),
+                    Span::styled("type note, Enter save, Esc cancel, Ctrl+u clear", Style::default().fg(c_muted())),
+                ]),
+                Modal::None => match app.view {
                     View::Flows => Line::from(vec![
                         Span::styled("↑/↓", Style::default().fg(Color::Green)),
                         Span::raw(" move  "),
@@ -459,6 +587,10 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         Span::raw(" filter  "),
                         Span::styled("t/u", Style::default().fg(Color::Green)),
                         Span::raw(" tcp/udp  "),
+                        Span::styled("b", Style::default().fg(Color::Green)),
+                        Span::raw(" bookmark  "),
+                        Span::styled("E", Style::default().fg(Color::Green)),
+                        Span::raw(" export  "),
                         Span::styled("q", Style::default().fg(Color::Green)),
                         Span::raw(" quit"),
                     ]),
@@ -480,56 +612,22 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         Span::styled("q", Style::default().fg(Color::Green)),
                         Span::raw(" quit"),
                     ]),
-                }
+                },
             };
 
             let footer = Paragraph::new(footer_line)
                 .block(Block::default().borders(Borders::ALL).style(Style::default().bg(c_panel())));
             f.render_widget(footer, chunks[2]);
 
-            // Filter modal
-            if app.filter_mode {
-                let area = centered_rect(70, 20, size);
-                f.render_widget(Clear, area);
-                let inner = area.inner(Margin { horizontal: 2, vertical: 1 });
-
-                let block = Block::default()
-                    .borders(Borders::ALL)
-                    .title("Filter")
-                    .style(Style::default().bg(c_panel()).fg(c_text()));
-                f.render_widget(block, area);
-
-                let q = if app.filter.query.is_empty() {
-                    "(empty)".to_string()
-                } else {
-                    app.filter.query.clone()
-                };
-                let text = vec![
-                    Line::from(vec![Span::styled("Query: ", Style::default().fg(c_muted())), Span::raw(q)]),
-                    Line::from(vec![
-                        Span::styled("TCP ", Style::default().fg(c_muted())),
-                        Span::styled(
-                            if app.filter.show_tcp { "on" } else { "off" },
-                            Style::default().fg(if app.filter.show_tcp { Color::Green } else { Color::Red }),
-                        ),
-                        Span::raw("   "),
-                        Span::styled("UDP ", Style::default().fg(c_muted())),
-                        Span::styled(
-                            if app.filter.show_udp { "on" } else { "off" },
-                            Style::default().fg(if app.filter.show_udp { Color::Green } else { Color::Red }),
-                        ),
-                    ]),
-                    Line::from(Span::raw("")),
-                    Line::from(Span::styled(
-                        "Type to filter by ip/port/proto. Press Enter to apply, Esc to cancel.",
-                        Style::default().fg(c_muted()),
-                    )),
-                ];
-
-                let p = Paragraph::new(text)
-                    .wrap(Wrap { trim: true })
-                    .style(Style::default().bg(c_panel()).fg(c_text()));
-                f.render_widget(p, inner);
+            // Modal
+            match app.modal {
+                Modal::Filter => {
+                    render_modal(f, size, "Filter", &app.filter.query, app.filter.show_tcp, app.filter.show_udp);
+                }
+                Modal::Bookmark => {
+                    render_modal(f, size, "Bookmark note", &app.bookmark_note, app.filter.show_tcp, app.filter.show_udp);
+                }
+                Modal::None => {}
             }
         })?;
 
@@ -540,30 +638,23 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     continue;
                 }
 
-                if app.filter_mode {
+                if app.modal != Modal::None {
                     match key.code {
-                        KeyCode::Esc => {
-                            app.exit_filter_mode();
-                        }
-                        KeyCode::Enter => {
-                            app.exit_filter_mode();
-                        }
-                        KeyCode::Backspace => {
-                            app.filter_pop();
-                        }
+                        KeyCode::Esc => app.close_modal_cancel(),
+                        KeyCode::Enter => app.close_modal_apply(),
+                        KeyCode::Backspace => app.modal_pop(),
                         KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            app.filter_clear();
+                            app.modal_clear();
                         }
                         KeyCode::Char(c) => {
                             if !key.modifiers.contains(KeyModifiers::CONTROL)
                                 && !key.modifiers.contains(KeyModifiers::ALT)
                             {
-                                app.filter_push(c);
+                                app.modal_push(c);
                             }
                         }
                         _ => {}
                     }
-                    // sync selection
                     flow_state.select(Some(app.selected_row));
                     continue;
                 }
@@ -572,7 +663,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     KeyCode::Char('q') => return Ok(()),
                     KeyCode::Char('/') => {
                         if app.view == View::Flows {
-                            app.enter_filter_mode();
+                            app.open_filter();
                         }
                     }
                     KeyCode::Char('t') => {
@@ -585,6 +676,16 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         if app.view == View::Flows {
                             app.toggle_udp();
                             flow_state.select(Some(app.selected_row));
+                        }
+                    }
+                    KeyCode::Char('b') => {
+                        if app.view == View::Flows {
+                            app.open_bookmark();
+                        }
+                    }
+                    KeyCode::Char('E') => {
+                        if app.view == View::Flows {
+                            let _ = app.export_report();
                         }
                     }
                     KeyCode::Esc => {
@@ -652,4 +753,56 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: ratatui::layout::Rect) -> ra
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(popup_layout[1])[1]
+}
+
+fn render_modal(
+    f: &mut ratatui::Frame,
+    size: ratatui::layout::Rect,
+    title: &str,
+    input: &str,
+    show_tcp: bool,
+    show_udp: bool,
+) {
+    let area = centered_rect(70, 22, size);
+    f.render_widget(Clear, area);
+    let inner = area.inner(Margin { horizontal: 2, vertical: 1 });
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .style(Style::default().bg(c_panel()).fg(c_text()));
+    f.render_widget(block, area);
+
+    let q = if input.is_empty() { "(empty)" } else { input };
+
+    let mut lines = vec![Line::from(vec![
+        Span::styled("Input: ", Style::default().fg(c_muted())),
+        Span::raw(q.to_string()),
+    ])];
+
+    // For filter modal, show toggles in content; harmless for bookmark modal.
+    lines.push(Line::from(vec![
+        Span::styled("TCP ", Style::default().fg(c_muted())),
+        Span::styled(
+            if show_tcp { "on" } else { "off" },
+            Style::default().fg(if show_tcp { Color::Green } else { Color::Red }),
+        ),
+        Span::raw("   "),
+        Span::styled("UDP ", Style::default().fg(c_muted())),
+        Span::styled(
+            if show_udp { "on" } else { "off" },
+            Style::default().fg(if show_udp { Color::Green } else { Color::Red }),
+        ),
+    ]));
+
+    lines.push(Line::from(Span::raw("")));
+    lines.push(Line::from(Span::styled(
+        "Enter = apply/save   Esc = cancel   Ctrl+u = clear",
+        Style::default().fg(c_muted()),
+    )));
+
+    let p = Paragraph::new(lines)
+        .wrap(Wrap { trim: true })
+        .style(Style::default().bg(c_panel()).fg(c_text()));
+    f.render_widget(p, inner);
 }
