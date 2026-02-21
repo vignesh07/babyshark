@@ -831,15 +831,9 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     } else {
                         crate::search::find_all_subslice_positions(&bytes, needle, STREAM_MATCH_HIGHLIGHT_CAP)
                     };
-                    if app.stream_last_search_bytes_len == bytes.len()
-                        && app.stream_last_search_match_count == match_positions.len()
-                    {
-                        app.stream_match_count = app.stream_last_search_match_count;
-                    } else {
-                        app.stream_match_count = match_positions.len();
-                        app.stream_last_search_bytes_len = bytes.len();
-                        app.stream_last_search_match_count = app.stream_match_count;
-                    }
+                    app.stream_match_count = match_positions.len();
+                    app.stream_last_search_bytes_len = bytes.len();
+                    app.stream_last_search_match_count = app.stream_match_count;
                     let mut match_ranges: Vec<(usize, usize)> = match_positions
                         .iter()
                         .map(|pos| (*pos, pos.saturating_add(needle.len())))
