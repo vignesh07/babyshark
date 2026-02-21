@@ -407,6 +407,9 @@ pub fn run_tui(app: &mut App) -> Result<()> {
     res
 }
 
+/// Build a fixed 256-entry lookup table indexed by `u8`.
+///
+/// Used to avoid per-byte allocations while rendering hexdumps.
 fn init_u8_lut<F>(mut f: F) -> Box<[Box<str>]>
 where
     F: FnMut(u8) -> Box<str>,
