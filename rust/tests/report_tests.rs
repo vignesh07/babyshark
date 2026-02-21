@@ -27,7 +27,10 @@ fn report_writes_markdown() {
         &filter,
         &[],
         flows.flows.get(0),
-        ReportOptions { max_flows: 10, max_stream_bytes: 64 },
+        ReportOptions {
+            max_flows: 10,
+            max_stream_bytes: 64,
+        },
     )
     .unwrap();
 

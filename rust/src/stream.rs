@@ -1,5 +1,5 @@
-use crate::pcap::{FlowDir, L4Proto, PacketRow};
 use crate::flow::FlowStats;
+use crate::pcap::{FlowDir, L4Proto, PacketRow};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StreamData {
@@ -71,8 +71,14 @@ pub fn build_stream(rows: &[PacketRow], flow: &FlowStats) -> StreamData {
                 continue;
             };
             match r.flow_dir {
-                Some(FlowDir::AtoB) => ab.push(Segment { seq, payload: &r.payload }),
-                Some(FlowDir::BtoA) => ba.push(Segment { seq, payload: &r.payload }),
+                Some(FlowDir::AtoB) => ab.push(Segment {
+                    seq,
+                    payload: &r.payload,
+                }),
+                Some(FlowDir::BtoA) => ba.push(Segment {
+                    seq,
+                    payload: &r.payload,
+                }),
                 None => {}
             }
         }

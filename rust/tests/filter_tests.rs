@@ -14,8 +14,14 @@ fn mk_flow(proto: L4Proto) -> FlowStats {
         },
         total_packets: 2,
         total_bytes: 20,
-        a_to_b: DirStats { packets: 1, bytes: 10 },
-        b_to_a: DirStats { packets: 1, bytes: 10 },
+        a_to_b: DirStats {
+            packets: 1,
+            bytes: 10,
+        },
+        b_to_a: DirStats {
+            packets: 1,
+            bytes: 10,
+        },
         packet_indices: vec![0, 1],
     }
 }

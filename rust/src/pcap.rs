@@ -76,9 +76,8 @@ pub struct PacketRow {
 }
 
 fn ts_from_duration(d: std::time::Duration) -> DateTime<Utc> {
-    DateTime::<Utc>::from_timestamp(d.as_secs() as i64, d.subsec_nanos()).unwrap_or_else(|| {
-        DateTime::<Utc>::from_timestamp(0, 0).unwrap()
-    })
+    DateTime::<Utc>::from_timestamp(d.as_secs() as i64, d.subsec_nanos())
+        .unwrap_or_else(|| DateTime::<Utc>::from_timestamp(0, 0).unwrap())
 }
 
 fn decode_packet(index: usize, ts: DateTime<Utc>, data: &[u8]) -> PacketRow {
@@ -145,7 +144,11 @@ fn decode_packet(index: usize, ts: DateTime<Utc>, data: &[u8]) -> PacketRow {
                 proto,
             };
             let (_canon, flipped) = fk.canonical();
-            row.flow_dir = Some(if flipped { FlowDir::BtoA } else { FlowDir::AtoB });
+            row.flow_dir = Some(if flipped {
+                FlowDir::BtoA
+            } else {
+                FlowDir::AtoB
+            });
             row.flow = Some(fk);
         }
 
@@ -198,7 +201,11 @@ fn decode_packet(index: usize, ts: DateTime<Utc>, data: &[u8]) -> PacketRow {
                 proto,
             };
             let (_canon, flipped) = fk.canonical();
-            row.flow_dir = Some(if flipped { FlowDir::BtoA } else { FlowDir::AtoB });
+            row.flow_dir = Some(if flipped {
+                FlowDir::BtoA
+            } else {
+                FlowDir::AtoB
+            });
             row.flow = Some(fk);
         }
 
@@ -213,13 +220,19 @@ fn decode_packet(index: usize, ts: DateTime<Utc>, data: &[u8]) -> PacketRow {
 fn summarize(row: &PacketRow) -> String {
     match (row.src, row.dst, row.proto, row.src_port, row.dst_port) {
         (Some(src), Some(dst), Some(L4Proto::Tcp), Some(sp), Some(dp)) => {
-            let payload = if row.payload.is_empty() { "" } else { " payload" };
+            let payload = if row.payload.is_empty() {
+                ""
+            } else {
+                " payload"
+            };
             format!("TCP {src}:{sp} → {dst}:{dp}{payload}")
         }
         (Some(src), Some(dst), Some(L4Proto::Udp), Some(sp), Some(dp)) => {
             format!("UDP {src}:{sp} → {dst}:{dp} len={}", row.len)
         }
-        (Some(src), Some(dst), Some(proto), _, _) => format!("{proto:?} {src} → {dst} len={}", row.len),
+        (Some(src), Some(dst), Some(proto), _, _) => {
+            format!("{proto:?} {src} → {dst} len={}", row.len)
+        }
         _ => format!("len={}", row.len),
     }
 }

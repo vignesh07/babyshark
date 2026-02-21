@@ -193,6 +193,19 @@ impl App {
         };
         self.stream_scroll = 0;
         self.stream_last_match = None;
+
+        // Preserve search context when switching tabs: if we have a query,
+        // jump to the first match in the new stream view.
+        if self.view == View::Stream {
+            if let Some(fl) = self.selected_flow() {
+                let bytes = build_stream_bytes(&self.rows, fl, self.stream_tab);
+                let needle = self.stream_search.as_bytes();
+                if let Some((pos, scroll)) = first_match_and_scroll(&bytes, needle) {
+                    self.stream_last_match = Some(pos);
+                    self.stream_scroll = scroll;
+                }
+            }
+        }
     }
 
     fn scroll_down(&mut self) {
@@ -244,18 +257,14 @@ impl App {
             Modal::StreamSearch => {
                 self.stream_last_match = None;
                 self.stream_scroll = 0;
+
                 if self.view == View::Stream {
                     if let Some(fl) = self.selected_flow() {
                         let bytes = build_stream_bytes(&self.rows, fl, self.stream_tab);
                         let needle = self.stream_search.as_bytes();
-                        if !needle.is_empty() {
-                            if let Some(pos) = crate::search::find_subslice(&bytes, needle) {
-                                self.stream_last_match = Some(pos);
-                                self.stream_scroll =
-                                    ((pos + (HEXDUMP_COLS - 1)) / HEXDUMP_COLS) as u16;
-                            } else {
-                                self.stream_last_match = None;
-                            }
+                        if let Some((pos, scroll)) = first_match_and_scroll(&bytes, needle) {
+                            self.stream_last_match = Some(pos);
+                            self.stream_scroll = scroll;
                         }
                     }
                 }
@@ -388,6 +397,15 @@ fn byte_is_printable(b: u8) -> bool {
 }
 
 const HEXDUMP_COLS: usize = 16;
+
+fn first_match_and_scroll(bytes: &[u8], needle: &[u8]) -> Option<(usize, u16)> {
+    if needle.is_empty() {
+        return None;
+    }
+    let pos = crate::search::find_subslice(bytes, needle)?;
+    let scroll = ((pos + (HEXDUMP_COLS - 1)) / HEXDUMP_COLS) as u16;
+    Some((pos, scroll))
+}
 
 fn bytes_to_pretty_lines(
     bytes: &[u8],
@@ -1109,7 +1127,10 @@ mod tests {
         let spans = &lines[0].spans;
 
         // There are two '61' (hex for 'a') spans, one per occurrence.
-        let a_hex: Vec<_> = spans.iter().filter(|s| s.content.as_ref() == "61").collect();
+        let a_hex: Vec<_> = spans
+            .iter()
+            .filter(|s| s.content.as_ref() == "61")
+            .collect();
         assert_eq!(a_hex.len(), 2);
         assert_eq!(a_hex[0].style, current_style);
         assert_eq!(a_hex[1].style, any_style);

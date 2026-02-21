@@ -46,8 +46,14 @@ pub fn write_report_md(
     // Filter summary
     md.push_str("## Filter\n\n");
     md.push_str(&format!("- query: `{}`\n", filter.query.trim()));
-    md.push_str(&format!("- tcp: {}\n", if filter.show_tcp { "on" } else { "off" }));
-    md.push_str(&format!("- udp: {}\n\n", if filter.show_udp { "on" } else { "off" }));
+    md.push_str(&format!(
+        "- tcp: {}\n",
+        if filter.show_tcp { "on" } else { "off" }
+    ));
+    md.push_str(&format!(
+        "- udp: {}\n\n",
+        if filter.show_udp { "on" } else { "off" }
+    ));
 
     // Flows summary
     md.push_str("## Flows (top)\n\n");
@@ -68,8 +74,18 @@ pub fn write_report_md(
             crate::pcap::L4Proto::Udp => "UDP",
             crate::pcap::L4Proto::Other(_) => "L4",
         };
-        let endpoints = format!("{}:{} ↔ {}:{}", f.key.src, f.key.src_port, f.key.dst, f.key.dst_port);
-        md.push_str(&format!("| {} | {} | {} | {} | `{}` |\n", i + 1, proto, f.total_packets, f.total_bytes, endpoints));
+        let endpoints = format!(
+            "{}:{} ↔ {}:{}",
+            f.key.src, f.key.src_port, f.key.dst, f.key.dst_port
+        );
+        md.push_str(&format!(
+            "| {} | {} | {} | {} | `{}` |\n",
+            i + 1,
+            proto,
+            f.total_packets,
+            f.total_bytes,
+            endpoints
+        ));
     }
     if shown == 0 {
         md.push_str("\n_No flows matched the current filter._\n");

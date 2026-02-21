@@ -97,10 +97,22 @@ mod tests {
 
     #[test]
     fn find_all_positions_overlapping() {
-        assert_eq!(find_all_subslice_positions(b"aaaa", b"aa", 10), vec![0, 1, 2]);
-        assert_eq!(find_all_subslice_positions(b"abcabc", b"abc", 10), vec![0, 3]);
-        assert_eq!(find_all_subslice_positions(b"abc", b"", 10), Vec::<usize>::new());
-        assert_eq!(find_all_subslice_positions(b"abc", b"z", 10), Vec::<usize>::new());
+        assert_eq!(
+            find_all_subslice_positions(b"aaaa", b"aa", 10),
+            vec![0, 1, 2]
+        );
+        assert_eq!(
+            find_all_subslice_positions(b"abcabc", b"abc", 10),
+            vec![0, 3]
+        );
+        assert_eq!(
+            find_all_subslice_positions(b"abc", b"", 10),
+            Vec::<usize>::new()
+        );
+        assert_eq!(
+            find_all_subslice_positions(b"abc", b"z", 10),
+            Vec::<usize>::new()
+        );
         assert_eq!(find_all_subslice_positions(b"aaaa", b"aa", 2), vec![0, 1]);
     }
 }
