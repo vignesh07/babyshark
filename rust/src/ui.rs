@@ -872,29 +872,54 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         return;
                     };
 
-                    let items: Vec<ListItem> = fl
-                        .packet_indices
-                        .iter()
-                        .filter_map(|idx| app.rows.get(*idx))
-                        .map(|r| {
-                            let dir = match r.flow_dir {
-                                Some(FlowDir::AtoB) => "→",
-                                Some(FlowDir::BtoA) => "←",
-                                None => "·",
-                            };
-                            let line = Line::from(vec![
-                                Span::styled(dir, Style::default().fg(c_accent())),
-                                Span::raw(UI_ONE_SPACE),
-                                Span::styled(format!("#{:<4} ", r.index), Style::default().fg(c_muted())),
-                                Span::styled(
-                                    format!("{:>4}B ", r.len),
-                                    Style::default().fg(Color::Rgb(190, 200, 220)),
-                                ),
-                                Span::styled(r.summary.clone(), Style::default().fg(c_text())),
-                            ]);
-                            ListItem::new(line)
-                        })
-                        .collect();
+                    let mut items: Vec<ListItem> = Vec::with_capacity(fl.packet_indices.len());
+
+                    let mut prev_ts: Option<chrono::DateTime<chrono::Utc>> = None;
+
+                    for idx in fl.packet_indices.iter() {
+                        let Some(r) = app.rows.get(*idx) else {
+                            continue;
+                        };
+
+                        let dir = match r.flow_dir {
+                            Some(FlowDir::AtoB) => "→",
+                            Some(FlowDir::BtoA) => "←",
+                            None => "·",
+                        };
+
+                        let ts_str = r.ts.format("%H:%M:%S%.3f").to_string();
+                        let delta_str = if let Some(prev) = prev_ts {
+                            let d = r.ts.signed_duration_since(prev);
+                            let ms = d.num_microseconds().unwrap_or(0) as f64 / 1000.0;
+                            format!("+{:>7.3}ms", ms)
+                        } else {
+                            "   (start)".to_string()
+                        };
+                        prev_ts = Some(r.ts);
+
+                        let line = Line::from(vec![
+                            Span::styled(dir, Style::default().fg(c_accent())),
+                            Span::raw(UI_ONE_SPACE),
+                            Span::styled(format!("#{:<4} ", r.index), Style::default().fg(c_muted())),
+                            Span::styled(
+                                ts_str,
+                                Style::default().fg(Color::Rgb(200, 200, 210)),
+                            ),
+                            Span::raw(UI_SPACER),
+                            Span::styled(
+                                delta_str,
+                                Style::default().fg(Color::Rgb(160, 170, 190)),
+                            ),
+                            Span::raw(UI_SPACER),
+                            Span::styled(
+                                format!("{:>4}B ", r.len),
+                                Style::default().fg(Color::Rgb(190, 200, 220)),
+                            ),
+                            Span::styled(r.summary.clone(), Style::default().fg(c_text())),
+                        ]);
+
+                        items.push(ListItem::new(line));
+                    }
 
                     let list = List::new(items).block(
                         Block::default()

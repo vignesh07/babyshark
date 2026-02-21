@@ -72,6 +72,7 @@ pub struct PacketRow {
     pub flow_dir: Option<FlowDir>,
     pub tcp_seq: Option<u32>,
     pub tcp_ack: Option<u32>,
+    pub tcp_flags: Option<u16>,
     pub payload: Vec<u8>,
 }
 
@@ -96,6 +97,7 @@ fn decode_packet(index: usize, ts: DateTime<Utc>, data: &[u8]) -> PacketRow {
         flow_dir: None,
         tcp_seq: None,
         tcp_ack: None,
+        tcp_flags: None,
         payload: Vec::new(),
     };
 
@@ -121,6 +123,17 @@ fn decode_packet(index: usize, ts: DateTime<Utc>, data: &[u8]) -> PacketRow {
                     row.dst_port = Some(tcp.destination_port());
                     row.tcp_seq = Some(tcp.sequence_number());
                     row.tcp_ack = Some(tcp.acknowledgment_number());
+                    row.tcp_flags = Some(
+                        (tcp.ns() as u16) << 8
+                            | (tcp.cwr() as u16) << 7
+                            | (tcp.ece() as u16) << 6
+                            | (tcp.urg() as u16) << 5
+                            | (tcp.ack() as u16) << 4
+                            | (tcp.psh() as u16) << 3
+                            | (tcp.rst() as u16) << 2
+                            | (tcp.syn() as u16) << 1
+                            | (tcp.fin() as u16),
+                    );
                     row.payload = tcp.payload().to_vec();
                 }
                 TransportSlice::Udp(udp) => {
@@ -178,6 +191,17 @@ fn decode_packet(index: usize, ts: DateTime<Utc>, data: &[u8]) -> PacketRow {
                     row.dst_port = Some(tcp.destination_port());
                     row.tcp_seq = Some(tcp.sequence_number());
                     row.tcp_ack = Some(tcp.acknowledgment_number());
+                    row.tcp_flags = Some(
+                        (tcp.ns() as u16) << 8
+                            | (tcp.cwr() as u16) << 7
+                            | (tcp.ece() as u16) << 6
+                            | (tcp.urg() as u16) << 5
+                            | (tcp.ack() as u16) << 4
+                            | (tcp.psh() as u16) << 3
+                            | (tcp.rst() as u16) << 2
+                            | (tcp.syn() as u16) << 1
+                            | (tcp.fin() as u16),
+                    );
                     row.payload = tcp.payload().to_vec();
                 }
                 TransportSlice::Udp(udp) => {
@@ -217,6 +241,39 @@ fn decode_packet(index: usize, ts: DateTime<Utc>, data: &[u8]) -> PacketRow {
     row
 }
 
+fn tcp_flags_to_string(mask: u16) -> String {
+    let mut parts: Vec<&'static str> = Vec::new();
+    // Order chosen to produce the common "SYN,ACK" / "FIN,ACK" style.
+    if (mask & 0x100) != 0 {
+        parts.push("NS");
+    }
+    if (mask & 0x80) != 0 {
+        parts.push("CWR");
+    }
+    if (mask & 0x40) != 0 {
+        parts.push("ECE");
+    }
+    if (mask & 0x20) != 0 {
+        parts.push("URG");
+    }
+    if (mask & 0x08) != 0 {
+        parts.push("PSH");
+    }
+    if (mask & 0x04) != 0 {
+        parts.push("RST");
+    }
+    if (mask & 0x02) != 0 {
+        parts.push("SYN");
+    }
+    if (mask & 0x01) != 0 {
+        parts.push("FIN");
+    }
+    if (mask & 0x10) != 0 {
+        parts.push("ACK");
+    }
+    parts.join(",")
+}
+
 fn summarize(row: &PacketRow) -> String {
     match (row.src, row.dst, row.proto, row.src_port, row.dst_port) {
         (Some(src), Some(dst), Some(L4Proto::Tcp), Some(sp), Some(dp)) => {
@@ -225,7 +282,19 @@ fn summarize(row: &PacketRow) -> String {
             } else {
                 " payload"
             };
-            format!("TCP {src}:{sp} → {dst}:{dp}{payload}")
+            let flags = row
+                .tcp_flags
+                .and_then(|m| {
+                    let s = tcp_flags_to_string(m);
+                    if s.is_empty() {
+                        None
+                    } else {
+                        Some(s)
+                    }
+                })
+                .map(|s| format!(" [{s}]"))
+                .unwrap_or_default();
+            format!("TCP{flags} {src}:{sp} → {dst}:{dp}{payload}")
         }
         (Some(src), Some(dst), Some(L4Proto::Udp), Some(sp), Some(dp)) => {
             format!("UDP {src}:{sp} → {dst}:{dp} len={}", row.len)
@@ -308,4 +377,17 @@ pub fn parse_cidr_list(s: &str) -> Result<Vec<IpNet>> {
         out.push(part.parse::<IpNet>().map_err(|e| anyhow!(e))?);
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tcp_flags_to_string_orders_syn_ack_commonly() {
+        assert_eq!(tcp_flags_to_string(0x02), "SYN");
+        assert_eq!(tcp_flags_to_string(0x10), "ACK");
+        assert_eq!(tcp_flags_to_string(0x12), "SYN,ACK");
+        assert_eq!(tcp_flags_to_string(0x11), "FIN,ACK");
+    }
 }
