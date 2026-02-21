@@ -284,6 +284,7 @@ impl App {
         self.modal = Modal::StreamSearch;
         self.stream_last_match = None;
         self.stream_match_count = 0;
+        self.stream_scroll = 0;
 
         if self.view == View::Stream {
             if let Some(fl) = self.selected_flow() {
@@ -1713,6 +1714,19 @@ mod tests {
         let (pos, scroll) = prev_match_and_scroll(&bytes, b"ab", None).unwrap();
         assert_eq!(pos, 32);
         assert_eq!(scroll, 2);
+    }
+
+    #[test]
+    fn opening_stream_search_resets_scroll() {
+        let mut app = App::new(
+            "/tmp/nope.pcap",
+            Vec::new(),
+            FlowIndex { flows: Vec::new() },
+        );
+        app.view = View::Stream;
+        app.stream_scroll = 9;
+        app.open_stream_search();
+        assert_eq!(app.stream_scroll, 0);
     }
 }
 
