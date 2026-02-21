@@ -238,8 +238,7 @@ impl App {
         if self.view == View::Stream {
             if let Some(fl) = self.selected_flow() {
                 let bytes = build_stream_bytes(&self.rows, fl, self.stream_tab);
-                let needle_bytes = self.stream_search.as_bytes().to_vec();
-                let needle = needle_bytes.as_slice();
+                let needle = self.stream_search.as_bytes();
 
                 self.stream_match_count = self.count_stream_matches(&bytes);
 
