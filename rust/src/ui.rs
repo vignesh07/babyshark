@@ -1424,6 +1424,20 @@ mod tests {
         assert_eq!(scroll_for_match_pos(31), 1);
         assert_eq!(scroll_for_match_pos(32), 2);
     }
+
+    #[test]
+    fn count_stream_matches_is_zero_when_query_empty() {
+        let mut app = App::new(
+            "/tmp/nope.pcap",
+            Vec::new(),
+            FlowIndex { flows: Vec::new() },
+        );
+        app.stream_search.clear();
+        assert_eq!(app.count_stream_matches(b"abc"), 0);
+
+        app.stream_search = "a".to_string();
+        assert_eq!(app.count_stream_matches(b"aba"), 2);
+    }
 }
 
 fn render_search_modal(
