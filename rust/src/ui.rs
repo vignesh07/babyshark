@@ -1540,6 +1540,18 @@ mod tests {
         assert_ne!(s, HEXDUMP_OFFSET_TOO_LARGE);
         assert!(s.starts_with("0x"));
     }
+
+    #[test]
+    fn byte_in_any_range_works_for_simple_ranges() {
+        let ranges = vec![(0usize, 2usize), (4usize, 6usize)];
+        assert!(byte_in_any_range(0, &ranges));
+        assert!(byte_in_any_range(1, &ranges));
+        assert!(!byte_in_any_range(2, &ranges));
+        assert!(!byte_in_any_range(3, &ranges));
+        assert!(byte_in_any_range(4, &ranges));
+        assert!(byte_in_any_range(5, &ranges));
+        assert!(!byte_in_any_range(6, &ranges));
+    }
 }
 
 const STREAM_SEARCH_MODAL_TITLE: &str = "Stream search";
