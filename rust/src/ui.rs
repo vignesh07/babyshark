@@ -428,7 +428,7 @@ fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec
                 spans.push(Span::styled(format!("{:02X}", chunk[i]), st));
             } else {
                 spans.push(Span::styled(
-                    "..",
+                    "  ",
                     Style::default().fg(c_muted()).add_modifier(Modifier::DIM),
                 ));
             }
@@ -1035,6 +1035,19 @@ mod tests {
         // hex: "61" for 'a' should not be highlighted
         let hex_a = spans.iter().find(|s| s.content.as_ref() == "61").unwrap();
         assert_ne!(hex_a.style, want);
+    }
+
+    #[test]
+    fn hexdump_uses_space_padding_for_short_final_line() {
+        let bytes = b"a";
+        let lines = bytes_to_pretty_lines(bytes, None);
+        assert_eq!(lines.len(), 1);
+
+        // We intentionally render missing bytes as two spaces (not "..")
+        // so the ASCII column stays aligned and the output looks like a classic hexdump.
+        let spans = &lines[0].spans;
+        assert!(spans.iter().any(|s| s.content.as_ref() == "  "));
+        assert!(!spans.iter().any(|s| s.content.as_ref() == ".."));
     }
 }
 
