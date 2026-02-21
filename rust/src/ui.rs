@@ -223,6 +223,7 @@ impl App {
 
     fn open_stream_search(&mut self) {
         self.modal = Modal::StreamSearch;
+        self.stream_last_match = None;
         // keep existing search text
     }
 
