@@ -296,12 +296,7 @@ impl App {
         // Reset scroll so search starts from a predictable top-of-stream position.
         self.stream_scroll = 0;
 
-        if self.view == View::Stream {
-            if let Some(fl) = self.selected_flow() {
-                let bytes = build_stream_bytes(&self.rows, fl, self.stream_tab);
-                self.stream_match_count = self.count_stream_matches(&bytes);
-            }
-        }
+        self.refresh_stream_match_count();
 
         // keep existing search text
     }
