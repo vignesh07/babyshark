@@ -452,10 +452,16 @@ fn byte_is_printable(b: u8) -> bool {
 const HEXDUMP_OFFSET_LUT_MAX: usize = 0xFFFF;
 const HEXDUMP_OFFSET_TOO_LARGE: &str = "0x??????  ";
 
+/// Format a hexdump offset as an owned string.
+///
+/// Used for lookup table initialization.
 fn fmt_hexdump_offset_owned(offset: usize) -> Box<str> {
     format!("0x{:>6x}  ", offset).into_boxed_str()
 }
 
+/// Format a hexdump offset for display.
+///
+/// Fast path: cached strings for offsets up to `HEXDUMP_OFFSET_LUT_MAX`.
 fn fmt_hexdump_offset(offset: usize) -> &'static str {
     use std::sync::OnceLock;
 
