@@ -5,8 +5,10 @@ use crate::pcap::{FlowDir, PacketRow};
 use crate::ui_filter::FlowFilter;
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::execute;
+use crossterm::terminal::{
+    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+};
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout, Margin};
 use ratatui::style::{Color, Modifier, Style};
@@ -244,7 +246,8 @@ impl App {
                         if !needle.is_empty() {
                             if let Some(pos) = crate::search::find_subslice(&bytes, needle) {
                                 self.stream_last_match = Some(pos);
-                                self.stream_scroll = ((pos + (HEXDUMP_COLS - 1)) / HEXDUMP_COLS) as u16;
+                                self.stream_scroll =
+                                    ((pos + (HEXDUMP_COLS - 1)) / HEXDUMP_COLS) as u16;
                             }
                         }
                     }
@@ -345,7 +348,11 @@ pub fn run_tui(app: &mut App) -> Result<()> {
 
 fn byte_ascii(b: u8) -> char {
     let c = b as char;
-    if c.is_ascii_graphic() || c == ' ' { c } else { '.' }
+    if c.is_ascii_graphic() || c == ' ' {
+        c
+    } else {
+        '.'
+    }
 }
 
 fn byte_is_printable(b: u8) -> bool {
@@ -384,7 +391,10 @@ fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec
                 let abs = offset + i;
                 let in_hl = abs >= hl_start && abs < hl_end;
                 let st = if in_hl {
-                    Style::default().fg(c_bg()).bg(c_accent()).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(c_bg())
+                        .bg(c_accent())
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(c_muted())
                 };
@@ -402,9 +412,16 @@ fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec
                 let abs = offset + i;
                 let in_hl = abs >= hl_start && abs < hl_end;
                 let st = if in_hl {
-                    Style::default().fg(c_bg()).bg(c_accent()).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(c_bg())
+                        .bg(c_accent())
+                        .add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default().fg(if byte_is_printable(chunk[i]) { c_text() } else { c_muted() })
+                    Style::default().fg(if byte_is_printable(chunk[i]) {
+                        c_text()
+                    } else {
+                        c_muted()
+                    })
                 };
                 spans.push(Span::styled(byte_ascii(chunk[i]).to_string(), st));
             } else {
@@ -712,7 +729,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     render_modal(f, size, "Bookmark note", &app.bookmark_note, app.filter.show_tcp, app.filter.show_udp);
                 }
                 Modal::StreamSearch => {
-                    render_modal(f, size, "Stream search", &app.stream_search, app.filter.show_tcp, app.filter.show_udp);
+                    render_search_modal(f, size, &app.stream_search, app.stream_last_match.is_some());
                 }
                 Modal::None => {}
             }
@@ -761,12 +778,20 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             if !needle.is_empty() {
                                 if let Some(fl) = app.selected_flow() {
                                     let bytes = build_stream_bytes(&app.rows, fl, app.stream_tab);
-                                    let start = app.stream_last_match.map(|p| p.saturating_add(1)).unwrap_or(0);
-                                    let pos = crate::search::find_next_subslice_from(&bytes, needle, start)
-                                        .or_else(|| crate::search::find_next_subslice_from(&bytes, needle, 0));
+                                    let start = app
+                                        .stream_last_match
+                                        .map(|p| p.saturating_add(1))
+                                        .unwrap_or(0);
+                                    let pos = crate::search::find_next_subslice_from(
+                                        &bytes, needle, start,
+                                    )
+                                    .or_else(|| {
+                                        crate::search::find_next_subslice_from(&bytes, needle, 0)
+                                    });
                                     if let Some(pos) = pos {
                                         app.stream_last_match = Some(pos);
-                                        app.stream_scroll = ((pos + (HEXDUMP_COLS - 1)) / HEXDUMP_COLS) as u16;
+                                        app.stream_scroll =
+                                            ((pos + (HEXDUMP_COLS - 1)) / HEXDUMP_COLS) as u16;
                                     }
                                 }
                             }
@@ -779,11 +804,20 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                 if let Some(fl) = app.selected_flow() {
                                     let bytes = build_stream_bytes(&app.rows, fl, app.stream_tab);
                                     let before = app.stream_last_match.unwrap_or(bytes.len());
-                                    let pos = crate::search::find_prev_subslice_before(&bytes, needle, before)
-                                        .or_else(|| crate::search::find_prev_subslice_before(&bytes, needle, bytes.len()));
+                                    let pos = crate::search::find_prev_subslice_before(
+                                        &bytes, needle, before,
+                                    )
+                                    .or_else(|| {
+                                        crate::search::find_prev_subslice_before(
+                                            &bytes,
+                                            needle,
+                                            bytes.len(),
+                                        )
+                                    });
                                     if let Some(pos) = pos {
                                         app.stream_last_match = Some(pos);
-                                        app.stream_scroll = ((pos + (HEXDUMP_COLS - 1)) / HEXDUMP_COLS) as u16;
+                                        app.stream_scroll =
+                                            ((pos + (HEXDUMP_COLS - 1)) / HEXDUMP_COLS) as u16;
                                     }
                                 }
                             }
@@ -831,26 +865,22 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             app.tab_next();
                         }
                     }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        match app.view {
-                            View::Flows => {
-                                app.move_down();
-                                flow_state.select(Some(app.selected_row));
-                            }
-                            View::Stream => app.scroll_down(),
-                            _ => {}
+                    KeyCode::Down | KeyCode::Char('j') => match app.view {
+                        View::Flows => {
+                            app.move_down();
+                            flow_state.select(Some(app.selected_row));
                         }
-                    }
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        match app.view {
-                            View::Flows => {
-                                app.move_up();
-                                flow_state.select(Some(app.selected_row));
-                            }
-                            View::Stream => app.scroll_up(),
-                            _ => {}
+                        View::Stream => app.scroll_down(),
+                        _ => {}
+                    },
+                    KeyCode::Up | KeyCode::Char('k') => match app.view {
+                        View::Flows => {
+                            app.move_up();
+                            flow_state.select(Some(app.selected_row));
                         }
-                    }
+                        View::Stream => app.scroll_up(),
+                        _ => {}
+                    },
                     _ => {}
                 }
             }
@@ -858,7 +888,11 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
     }
 }
 
-fn centered_rect(percent_x: u16, percent_y: u16, r: ratatui::layout::Rect) -> ratatui::layout::Rect {
+fn centered_rect(
+    percent_x: u16,
+    percent_y: u16,
+    r: ratatui::layout::Rect,
+) -> ratatui::layout::Rect {
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -888,7 +922,10 @@ fn render_modal(
 ) {
     let area = centered_rect(70, 22, size);
     f.render_widget(Clear, area);
-    let inner = area.inner(Margin { horizontal: 2, vertical: 1 });
+    let inner = area.inner(Margin {
+        horizontal: 2,
+        vertical: 1,
+    });
 
     let block = Block::default()
         .borders(Borders::ALL)
@@ -940,7 +977,10 @@ mod tests {
         let lines = bytes_to_pretty_lines(bytes, Some((1, 2)));
         assert_eq!(lines.len(), 1);
 
-        let want = Style::default().fg(c_bg()).bg(c_accent()).add_modifier(Modifier::BOLD);
+        let want = Style::default()
+            .fg(c_bg())
+            .bg(c_accent())
+            .add_modifier(Modifier::BOLD);
 
         // hex: "62" for 'b' should be highlighted
         let spans = &lines[0].spans;
@@ -955,4 +995,64 @@ mod tests {
         let hex_a = spans.iter().find(|s| s.content.as_ref() == "61").unwrap();
         assert_ne!(hex_a.style, want);
     }
+}
+
+fn render_search_modal(
+    f: &mut ratatui::Frame,
+    size: ratatui::layout::Rect,
+    input: &str,
+    has_match: bool,
+) {
+    let area = centered_rect(70, 22, size);
+    f.render_widget(Clear, area);
+    let inner = area.inner(Margin {
+        horizontal: 2,
+        vertical: 1,
+    });
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title("Stream search")
+        .style(Style::default().bg(c_panel()).fg(c_text()));
+    f.render_widget(block, area);
+
+    let q = if input.is_empty() { "(empty)" } else { input };
+
+    let status = if input.is_empty() {
+        "type to search"
+    } else if has_match {
+        "match found (n/N to navigate)"
+    } else {
+        "no matches"
+    };
+
+    let mut lines = vec![
+        Line::from(vec![
+            Span::styled("Query: ", Style::default().fg(c_muted())),
+            Span::raw(q.to_string()),
+        ]),
+        Line::from(Span::raw("")),
+        Line::from(vec![
+            Span::styled("Status: ", Style::default().fg(c_muted())),
+            Span::styled(
+                status,
+                Style::default().fg(if has_match { Color::Green } else { Color::Red }),
+            ),
+        ]),
+        Line::from(Span::raw("")),
+        Line::from(Span::styled(
+            "Enter = apply   Esc = cancel   Ctrl+u = clear",
+            Style::default().fg(c_muted()),
+        )),
+    ];
+
+    // keep layout stable
+    if lines.len() < 5 {
+        lines.push(Line::from(Span::raw("")));
+    }
+
+    let p = Paragraph::new(lines)
+        .wrap(Wrap { trim: true })
+        .style(Style::default().bg(c_panel()).fg(c_text()));
+    f.render_widget(p, inner);
 }
