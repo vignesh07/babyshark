@@ -468,6 +468,7 @@ fn hex_byte_upper(b: u8) -> &'static str {
 }
 
 const HEXDUMP_COLS: usize = 16;
+const HEXDUMP_LAST_COL: usize = HEXDUMP_COLS - 1;
 const HEXDUMP_GROUP: usize = HEXDUMP_COLS / 2;
 const HEXDUMP_GUTTER: &str = "  | ";
 const HEXDUMP_GUTTER_END: &str = " |";
@@ -480,7 +481,7 @@ fn match_ordinal(match_positions: &[usize], current: Option<usize>) -> Option<us
 }
 
 fn scroll_for_match_pos(pos: usize) -> u16 {
-    ((pos + (HEXDUMP_COLS - 1)) / HEXDUMP_COLS) as u16
+    ((pos + HEXDUMP_LAST_COL) / HEXDUMP_COLS) as u16
 }
 
 fn byte_in_any_range(abs: usize, ranges: &[(usize, usize)]) -> bool {
