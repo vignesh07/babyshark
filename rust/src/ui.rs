@@ -284,6 +284,7 @@ impl App {
         self.modal = Modal::StreamSearch;
         self.stream_last_match = None;
         self.stream_match_count = 0;
+        // Reset scroll so search starts from a predictable top-of-stream position.
         self.stream_scroll = 0;
 
         if self.view == View::Stream {
