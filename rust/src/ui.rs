@@ -1504,7 +1504,7 @@ fn render_search_modal(
         ]),
         Line::from(Span::raw("")),
         Line::from(Span::styled(
-            "Enter = apply   Esc = cancel   Ctrl+u = clear   (n/N next/prev)",
+            "Enter = apply   Esc = cancel   Ctrl+u = clear   (n/N next/prev, Tab switch stream)",
             Style::default().fg(c_muted()),
         )),
     ];
