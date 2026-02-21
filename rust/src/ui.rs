@@ -1803,6 +1803,13 @@ mod tests {
             style_any_match_base().add_modifier(Modifier::DIM),
         );
     }
+
+    #[test]
+    fn search_modal_match_count_format_appends_plus_when_capped() {
+        let match_count = STREAM_MATCH_HIGHLIGHT_CAP;
+        let s = format!("{match_count}{}", match_cap_suffix(match_count));
+        assert!(s.ends_with('+'));
+    }
 }
 
 const STREAM_SEARCH_MODAL_TITLE: &str = "Stream search";
@@ -1864,7 +1871,7 @@ fn render_search_modal(
         Line::from(vec![
             Span::styled("Matches: ", Style::default().fg(c_muted())),
             Span::styled(
-                format!("{match_count}"),
+                format!("{match_count}{}", match_cap_suffix(match_count)),
                 Style::default().fg(if input.is_empty() {
                     c_muted()
                 } else if match_count > 0 {
