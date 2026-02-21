@@ -1458,6 +1458,24 @@ mod tests {
         };
         assert!(status.contains("0 matches"));
     }
+
+    #[test]
+    fn count_stream_matches_respects_highlight_cap() {
+        let mut app = App::new(
+            "/tmp/nope.pcap",
+            Vec::new(),
+            FlowIndex { flows: Vec::new() },
+        );
+        app.stream_search = "ab".to_string();
+
+        // 300 matches, but cap is 2000 so we should see all 300.
+        let bytes = b"ab".repeat(300);
+        assert_eq!(app.count_stream_matches(&bytes), 300);
+
+        // If we exceed cap, we should stop at cap.
+        let bytes = b"ab".repeat(STREAM_MATCH_HIGHLIGHT_CAP + 10);
+        assert_eq!(app.count_stream_matches(&bytes), STREAM_MATCH_HIGHLIGHT_CAP);
+    }
 }
 
 fn render_search_modal(
