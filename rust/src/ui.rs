@@ -777,7 +777,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                     let bytes = build_stream_bytes(&app.rows, fl, app.stream_tab);
                                     let start = app
                                         .stream_last_match
-                                        .map(|p| p.saturating_add(1))
+                                        .map(|p| p + needle.len())
                                         .unwrap_or(0);
                                     let pos = crate::search::find_next_subslice_from(
                                         &bytes, needle, start,
