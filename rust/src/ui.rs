@@ -1424,8 +1424,8 @@ mod tests {
     }
 
     #[test]
-    fn scroll_for_match_pos_rounds_up_to_containing_row() {
-        // With 16-byte rows, we "round up" so the matching byte is visible.
+    fn scroll_for_match_pos_returns_containing_row() {
+        // With 16-byte rows, we return the containing 16-byte row.
         assert_eq!(scroll_for_match_pos(0), 0);
         assert_eq!(scroll_for_match_pos(15), 0);
         assert_eq!(scroll_for_match_pos(16), 1);
