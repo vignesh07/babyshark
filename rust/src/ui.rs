@@ -1423,6 +1423,16 @@ mod tests {
     fn match_styles_distinguish_current_from_other_matches() {
         assert_ne!(style_current_match(), style_any_match());
     }
+
+    #[test]
+    fn scroll_for_match_pos_rounds_up_to_containing_row() {
+        // With 16-byte rows, we "round up" so the matching byte is visible.
+        assert_eq!(scroll_for_match_pos(0), 0);
+        assert_eq!(scroll_for_match_pos(15), 1);
+        assert_eq!(scroll_for_match_pos(16), 1);
+        assert_eq!(scroll_for_match_pos(31), 2);
+        assert_eq!(scroll_for_match_pos(32), 2);
+    }
 }
 
 fn render_search_modal(
