@@ -415,29 +415,33 @@ pub fn run_tui(app: &mut App) -> Result<()> {
     res
 }
 
+fn init_u8_lut<F>(mut f: F) -> Box<[Box<str>]>
+where
+    F: FnMut(u8) -> Box<str>,
+{
+    (0u16..=255)
+        .map(|i| f(i as u8))
+        .collect::<Vec<_>>()
+        .into_boxed_slice()
+}
+
 fn ascii_cell(b: u8) -> &'static str {
     use std::sync::OnceLock;
 
     static LUT: OnceLock<Box<[Box<str>]>> = OnceLock::new();
     let lut = LUT.get_or_init(|| {
-        (0u16..=255)
-            .map(|i| {
-                let b = i as u8;
-                match b {
-                    b'\n' => "⏎".to_string().into_boxed_str(),
-                    b'\t' => "⇥".to_string().into_boxed_str(),
-                    _ => {
-                        let c = b as char;
-                        if c.is_ascii_graphic() || c == ' ' {
-                            c.to_string().into_boxed_str()
-                        } else {
-                            ".".to_string().into_boxed_str()
-                        }
-                    }
+        init_u8_lut(|b| match b {
+            b'\n' => "⏎".to_string().into_boxed_str(),
+            b'\t' => "⇥".to_string().into_boxed_str(),
+            _ => {
+                let c = b as char;
+                if c.is_ascii_graphic() || c == ' ' {
+                    c.to_string().into_boxed_str()
+                } else {
+                    ".".to_string().into_boxed_str()
                 }
-            })
-            .collect::<Vec<_>>()
-            .into_boxed_slice()
+            }
+        })
     });
 
     &lut[b as usize]
@@ -459,12 +463,7 @@ fn hex_byte_upper(b: u8) -> &'static str {
     use std::sync::OnceLock;
 
     static LUT: OnceLock<Box<[Box<str>]>> = OnceLock::new();
-    let lut = LUT.get_or_init(|| {
-        (0u16..=255)
-            .map(|i| format!("{:02X}", i as u8).into_boxed_str())
-            .collect::<Vec<_>>()
-            .into_boxed_slice()
-    });
+    let lut = LUT.get_or_init(|| init_u8_lut(|b| format!("{:02X}", b).into_boxed_str()));
     &lut[b as usize]
 }
 
