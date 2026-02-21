@@ -41,7 +41,7 @@ pub fn find_all_subslice_positions(
 
     let mut out = Vec::with_capacity(max_matches.min(haystack.len()));
     let mut start = 0usize;
-    while start <= haystack.len() {
+    while start < haystack.len() {
         if out.len() >= max_matches {
             break;
         }
