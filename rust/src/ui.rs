@@ -212,7 +212,12 @@ impl App {
                 self.stream_match_count = if needle.is_empty() {
                     0
                 } else {
-                    crate::search::find_all_subslice_positions(&bytes, needle, 2000).len()
+                    crate::search::find_all_subslice_positions(
+                        &bytes,
+                        needle,
+                        STREAM_MATCH_HIGHLIGHT_CAP,
+                    )
+                    .len()
                 };
                 self.stream_last_search_bytes_len = bytes.len();
                 self.stream_last_search_match_count = self.stream_match_count;
@@ -292,7 +297,12 @@ impl App {
                         self.stream_match_count = if needle.is_empty() {
                             0
                         } else {
-                            crate::search::find_all_subslice_positions(&bytes, needle, 2000).len()
+                            crate::search::find_all_subslice_positions(
+                                &bytes,
+                                needle,
+                                STREAM_MATCH_HIGHLIGHT_CAP,
+                            )
+                            .len()
                         };
                         self.stream_last_search_bytes_len = bytes.len();
                         self.stream_last_search_match_count = self.stream_match_count;
@@ -473,6 +483,7 @@ fn hex_byte_upper(b: u8) -> &'static str {
 
 const HEXDUMP_COLS: usize = 16;
 const HEXDUMP_GUTTER: &str = "  | ";
+const STREAM_MATCH_HIGHLIGHT_CAP: usize = 2000;
 
 fn match_ordinal(match_positions: &[usize], current: Option<usize>) -> Option<usize> {
     let cur = current?;
@@ -818,7 +829,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     let match_positions: Vec<usize> = if needle.is_empty() {
                         Vec::new()
                     } else {
-                        crate::search::find_all_subslice_positions(&bytes, needle, 2000)
+                        crate::search::find_all_subslice_positions(&bytes, needle, STREAM_MATCH_HIGHLIGHT_CAP)
                     };
                     if app.stream_last_search_bytes_len == bytes.len()
                         && app.stream_last_search_match_count == match_positions.len()
@@ -1345,7 +1356,8 @@ mod tests {
         let needle = b"ab";
 
         let small = crate::search::find_all_subslice_positions(&bytes, needle, 200);
-        let big = crate::search::find_all_subslice_positions(&bytes, needle, 2000);
+        let big =
+            crate::search::find_all_subslice_positions(&bytes, needle, STREAM_MATCH_HIGHLIGHT_CAP);
 
         assert_eq!(small.len(), 200);
         assert_eq!(big.len(), 300);
