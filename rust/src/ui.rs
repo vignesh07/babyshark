@@ -648,7 +648,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         .block(
                             Block::default()
                                 .borders(Borders::ALL)
-                                .title(format!("Stream: {label}  (Tab A→B/B→A/Combined, / search, n/N next/prev, ↑/↓ scroll, Esc back)"))
+                                .title(format!("Stream: {label}  (Tab A→B/B→A/Combined, / search, n/N next/prev, ↑/↓ scroll, Esc back/clear)"))
                                 .style(Style::default().bg(c_panel())),
                         )
                         .wrap(Wrap { trim: false })
