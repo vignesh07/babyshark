@@ -1699,6 +1699,21 @@ mod tests {
         assert_eq!(pos, 32);
         assert_eq!(scroll, 2);
     }
+
+    #[test]
+    fn next_prev_match_helpers_compute_scroll_for_later_rows() {
+        let mut bytes = vec![b'x'; 40];
+        bytes[32] = b'a';
+        bytes[33] = b'b';
+
+        let (pos, scroll) = next_match_and_scroll(&bytes, b"ab", None).unwrap();
+        assert_eq!(pos, 32);
+        assert_eq!(scroll, 2);
+
+        let (pos, scroll) = prev_match_and_scroll(&bytes, b"ab", None).unwrap();
+        assert_eq!(pos, 32);
+        assert_eq!(scroll, 2);
+    }
 }
 
 const STREAM_SEARCH_MODAL_TITLE: &str = "Stream search";
