@@ -450,6 +450,11 @@ fn byte_is_printable(b: u8) -> bool {
     }
 }
 
+fn fmt_hexdump_offset(offset: usize) -> String {
+    // Keep fixed width for column alignment while making hex-ness explicit.
+    format!("0x{:>6x}  ", offset)
+}
+
 fn hex_byte_upper(b: u8) -> &'static str {
     use std::sync::OnceLock;
 
@@ -552,7 +557,7 @@ fn bytes_to_pretty_lines(
 
         let mut spans: Vec<Span> = Vec::new();
         spans.push(Span::styled(
-            format!("0x{:>6x}  ", offset),
+            fmt_hexdump_offset(offset),
             Style::default().fg(c_muted()).add_modifier(Modifier::DIM),
         ));
 
