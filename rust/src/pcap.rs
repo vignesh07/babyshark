@@ -70,6 +70,8 @@ pub struct PacketRow {
     pub summary: String,
     pub flow: Option<FlowKey>,
     pub flow_dir: Option<FlowDir>,
+    pub tcp_seq: Option<u32>,
+    pub tcp_ack: Option<u32>,
     pub payload: Vec<u8>,
 }
 
@@ -93,6 +95,8 @@ fn decode_packet(index: usize, ts: DateTime<Utc>, data: &[u8]) -> PacketRow {
         summary: String::new(),
         flow: None,
         flow_dir: None,
+        tcp_seq: None,
+        tcp_ack: None,
         payload: Vec::new(),
     };
 
@@ -116,6 +120,8 @@ fn decode_packet(index: usize, ts: DateTime<Utc>, data: &[u8]) -> PacketRow {
                     row.proto = Some(L4Proto::Tcp);
                     row.src_port = Some(tcp.source_port());
                     row.dst_port = Some(tcp.destination_port());
+                    row.tcp_seq = Some(tcp.sequence_number());
+                    row.tcp_ack = Some(tcp.acknowledgment_number());
                     row.payload = tcp.payload().to_vec();
                 }
                 TransportSlice::Udp(udp) => {
@@ -167,6 +173,8 @@ fn decode_packet(index: usize, ts: DateTime<Utc>, data: &[u8]) -> PacketRow {
                     row.proto = Some(L4Proto::Tcp);
                     row.src_port = Some(tcp.source_port());
                     row.dst_port = Some(tcp.destination_port());
+                    row.tcp_seq = Some(tcp.sequence_number());
+                    row.tcp_ack = Some(tcp.acknowledgment_number());
                     row.payload = tcp.payload().to_vec();
                 }
                 TransportSlice::Udp(udp) => {
