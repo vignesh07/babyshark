@@ -1,3 +1,6 @@
 .DS_Store
 /babyshark
 /dist
+
+# Rust
+/rust/target
