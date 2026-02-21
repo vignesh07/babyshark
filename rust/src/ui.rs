@@ -1552,6 +1552,14 @@ mod tests {
         assert!(byte_in_any_range(5, &ranges));
         assert!(!byte_in_any_range(6, &ranges));
     }
+
+    #[test]
+    fn current_match_style_is_not_dimmed() {
+        assert_ne!(
+            style_current_match(),
+            style_current_match().add_modifier(Modifier::DIM),
+        );
+    }
 }
 
 const STREAM_SEARCH_MODAL_TITLE: &str = "Stream search";
