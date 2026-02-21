@@ -1402,6 +1402,16 @@ mod tests {
         let cur_disp = if total == 0 { 0 } else { cur.max(1) };
         assert_eq!(cur_disp, 1);
     }
+
+    #[test]
+    fn fmt_hexdump_offset_is_fixed_width_with_prefix() {
+        let s = fmt_hexdump_offset(0);
+        assert!(s.starts_with("0x"));
+        assert!(s.ends_with("  "));
+        // width: "0x" + 6 hex-padded-with-spaces + 2 spaces
+        assert_eq!(s.len(), 10);
+        assert!(s.contains("0"));
+    }
 }
 
 fn render_search_modal(
