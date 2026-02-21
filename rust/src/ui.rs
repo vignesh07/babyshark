@@ -1455,6 +1455,10 @@ mod tests {
     #[test]
     fn match_styles_distinguish_current_from_other_matches() {
         assert_ne!(style_current_match(), style_any_match());
+        assert_ne!(
+            style_any_match(),
+            Style::default().fg(Color::Black).bg(c_accent()),
+        );
     }
 
     #[test]
