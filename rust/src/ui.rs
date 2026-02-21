@@ -1793,6 +1793,14 @@ mod tests {
         assert_eq!(app.stream_match_count, 99);
         assert!(matches!(app.view, View::Stream));
     }
+
+    #[test]
+    fn any_match_base_style_is_not_dimmed() {
+        assert_ne!(
+            style_any_match_base(),
+            style_any_match_base().add_modifier(Modifier::DIM),
+        );
+    }
 }
 
 const STREAM_SEARCH_MODAL_TITLE: &str = "Stream search";
