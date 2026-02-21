@@ -800,7 +800,10 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             if !needle.is_empty() {
                                 if let Some(fl) = app.selected_flow() {
                                     let bytes = build_stream_bytes(&app.rows, fl, app.stream_tab);
-                                    let before = app.stream_last_match.unwrap_or(bytes.len());
+                                    let before = app
+                                        .stream_last_match
+                                        .unwrap_or(bytes.len())
+                                        .saturating_sub(1);
                                     let pos = crate::search::find_prev_subslice_before(
                                         &bytes, needle, before,
                                     )
