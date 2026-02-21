@@ -188,6 +188,7 @@ impl App {
         self.stream_scroll = 0;
     }
 
+    /// Count stream search matches (capped to STREAM_MATCH_HIGHLIGHT_CAP).
     fn count_stream_matches(&self, bytes: &[u8]) -> usize {
         let needle = self.stream_search.as_bytes();
         if needle.is_empty() {
