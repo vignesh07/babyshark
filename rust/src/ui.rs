@@ -348,6 +348,8 @@ fn byte_ascii(b: u8) -> char {
     if c.is_ascii_graphic() || c == ' ' { c } else { '.' }
 }
 
+const HEXDUMP_COLS: usize = 16;
+
 fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec<Line<'static>> {
     let mut lines: Vec<Line> = Vec::new();
     let mut offset: usize = 0;
@@ -357,7 +359,7 @@ fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec
         .unwrap_or((usize::MAX, usize::MAX));
 
     while offset < bytes.len() {
-        let chunk = &bytes[offset..bytes.len().min(offset + 16)];
+        let chunk = &bytes[offset..bytes.len().min(offset + HEXDUMP_COLS)];
 
         let mut spans: Vec<Span> = Vec::new();
         spans.push(Span::styled(
@@ -366,8 +368,8 @@ fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec
         ));
 
         // hex bytes with spacing and a mid-group separator for readability
-        for i in 0..16 {
-            if i == 8 {
+        for i in 0..HEXDUMP_COLS {
+            if i == (HEXDUMP_COLS / 2) {
                 spans.push(Span::raw("  "));
             } else if i != 0 {
                 spans.push(Span::raw(" "));
@@ -390,7 +392,7 @@ fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec
         spans.push(Span::raw("  |"));
 
         // ascii
-        for i in 0..16 {
+        for i in 0..HEXDUMP_COLS {
             if i < chunk.len() {
                 let abs = offset + i;
                 let in_hl = abs >= hl_start && abs < hl_end;
