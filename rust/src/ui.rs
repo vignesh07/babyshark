@@ -195,8 +195,6 @@ impl App {
             StreamTab::BtoA => StreamTab::Combined,
         };
         self.stream_scroll = 0;
-        self.stream_last_match = None;
-        self.stream_match_count = 0;
 
         // Preserve search context when switching tabs: if we have a query,
         // jump to the first match in the new stream view.
@@ -216,6 +214,9 @@ impl App {
                     self.stream_scroll = scroll;
                 }
             }
+        } else {
+            self.stream_last_match = None;
+            self.stream_match_count = 0;
         }
     }
 
@@ -1301,12 +1302,15 @@ mod tests {
         assert_eq!(big.len(), 300);
     }
 
-
     #[test]
     fn manual_scroll_does_not_clear_current_match() {
         // This is a behavioral test of App's scroll methods.
         // Scrolling is purely a view offset and should not clear the active match selection.
-        let mut app = App::new("/tmp/nope.pcap", Vec::new(), FlowIndex { flows: Vec::new() });
+        let mut app = App::new(
+            "/tmp/nope.pcap",
+            Vec::new(),
+            FlowIndex { flows: Vec::new() },
+        );
         app.view = View::Stream;
         app.stream_last_match = Some(123);
         app.stream_scroll = 10;
