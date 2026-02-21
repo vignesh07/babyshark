@@ -427,6 +427,18 @@ fn byte_is_printable(b: u8) -> bool {
     }
 }
 
+fn hex_byte_upper(b: u8) -> &'static str {
+    use std::sync::OnceLock;
+
+    static LUT: OnceLock<Vec<Box<str>>> = OnceLock::new();
+    let lut = LUT.get_or_init(|| {
+        (0u16..=255)
+            .map(|i| format!("{:02X}", i as u8).into_boxed_str())
+            .collect()
+    });
+    &lut[b as usize]
+}
+
 const HEXDUMP_COLS: usize = 16;
 const HEXDUMP_GUTTER: &str = "  | ";
 
@@ -541,7 +553,7 @@ fn bytes_to_pretty_lines(
                     Style::default().fg(c_muted())
                 };
 
-                spans.push(Span::styled(format!("{:02X}", chunk[i]), st));
+                spans.push(Span::styled(hex_byte_upper(chunk[i]), st));
             } else {
                 spans.push(Span::styled(
                     "  ",
