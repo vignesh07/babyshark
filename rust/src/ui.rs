@@ -1,4 +1,5 @@
 use crate::casefile::CaseFile;
+use chrono::Local;
 use crate::flow::{FlowIndex, FlowStats};
 use crate::pcap::{FlowDir, PacketRow};
 // stream module referenced via `crate::stream::...`
@@ -324,7 +325,17 @@ impl App {
 
         let selected = self.selected_flow();
         crate::report::write_report_md(
-            &out,
+            &out_latest,
+            &self.pcap_path,
+            &self.rows,
+            &self.flows,
+            &self.filter,
+            &self.casefile.bookmarks,
+            selected,
+            crate::report::ReportOptions::default(),
+        )?;
+        crate::report::write_report_md(
+            &out_versioned,
             &self.pcap_path,
             &self.rows,
             &self.flows,
@@ -404,7 +415,7 @@ fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec
                 };
                 spans.push(Span::styled(format!("{:02x}", chunk[i]), st));
             } else {
-                spans.push(Span::styled("..", Style::default().fg(c_muted())));
+                spans.push(Span::styled("..", Style::default().fg(c_muted()).add_modifier(Modifier::DIM)));
             }
         }
 
