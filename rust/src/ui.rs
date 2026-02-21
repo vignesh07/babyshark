@@ -532,7 +532,10 @@ fn style_current_match() -> Style {
 }
 
 fn style_any_match() -> Style {
-    Style::default().fg(Color::Black).bg(c_accent())
+    Style::default()
+        .fg(Color::Black)
+        .bg(c_accent())
+        .add_modifier(Modifier::DIM)
 }
 
 fn first_match_and_scroll(bytes: &[u8], needle: &[u8]) -> Option<(usize, u16)> {
