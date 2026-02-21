@@ -922,7 +922,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     };
 
                     let title = format!(
-                        "Stream: {label}{status}  (Tab A→B/B→A/Combined, / search (Enter apply), n/N next/prev, ↑/↓ scroll, Esc back/clear)"
+                        "Stream: {label}{status}  (Tab/Shift-Tab A→B/B→A/Combined, / search (Enter apply), n/N next/prev, ↑/↓ scroll, Esc back/clear)"
                     );
 
                     let text = bytes_to_pretty_text(&bytes, &match_ranges, current);
