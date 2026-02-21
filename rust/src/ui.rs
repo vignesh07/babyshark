@@ -833,7 +833,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     let status = if needle.is_empty() {
                         String::new()
                     } else {
-                        let total = match_positions.len();
+                        let total = app.stream_match_count;
                         let cur = match_ordinal(&match_positions, app.stream_last_match)
                             .map(|i| i + 1)
                             .unwrap_or(0);
