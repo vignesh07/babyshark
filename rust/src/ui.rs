@@ -507,6 +507,7 @@ fn byte_is_printable(b: u8) -> bool {
 
 const HEXDUMP_OFFSET_LUT_MAX: usize = 0xFFFF;
 // Placeholder shown when the offset exceeds the cached LUT range.
+// (Fixed width to preserve column alignment.)
 const HEXDUMP_OFFSET_TOO_LARGE: &str = "0x??????  ";
 
 /// Format a hexdump offset as an owned string.
