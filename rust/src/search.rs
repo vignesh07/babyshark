@@ -39,7 +39,7 @@ pub fn find_all_subslice_positions(
         return Vec::new();
     }
 
-    let mut out = Vec::new();
+    let mut out = Vec::with_capacity(max_matches.min(haystack.len()));
     let mut start = 0usize;
     while start <= haystack.len() {
         if out.len() >= max_matches {
