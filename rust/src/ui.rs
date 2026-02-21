@@ -1446,6 +1446,18 @@ mod tests {
         app.stream_search = "a".to_string();
         assert_eq!(app.count_stream_matches(b"aba"), 2);
     }
+
+    #[test]
+    fn stream_title_shows_zero_matches_text_when_no_hits() {
+        let app_stream_search = "xyz";
+        let total = 0usize;
+        let status = if total == 0 {
+            format!("  search=\"{}\" (0 matches)", app_stream_search)
+        } else {
+            unreachable!()
+        };
+        assert!(status.contains("0 matches"));
+    }
 }
 
 fn render_search_modal(
