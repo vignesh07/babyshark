@@ -1769,6 +1769,18 @@ mod tests {
         assert_eq!(app.stream_scroll, 0);
         assert_eq!(app.stream_last_match, None);
     }
+
+    #[test]
+    fn refresh_stream_match_count_does_not_recurse_infinitely() {
+        let mut app = App::new(
+            "/tmp/nope.pcap",
+            Vec::new(),
+            FlowIndex { flows: Vec::new() },
+        );
+        app.view = View::Stream;
+        // With no flows selected, this should be a no-op and must not overflow.
+        app.refresh_stream_match_count();
+    }
 }
 
 const STREAM_SEARCH_MODAL_TITLE: &str = "Stream search";
