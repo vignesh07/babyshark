@@ -452,6 +452,10 @@ fn byte_is_printable(b: u8) -> bool {
 const HEXDUMP_OFFSET_LUT_MAX: usize = 0xFFFF;
 const HEXDUMP_OFFSET_TOO_LARGE: &str = "0x??????  ";
 
+fn fmt_hexdump_offset_owned(offset: usize) -> Box<str> {
+    format!("0x{:>6x}  ", offset).into_boxed_str()
+}
+
 fn fmt_hexdump_offset(offset: usize) -> &'static str {
     use std::sync::OnceLock;
 
@@ -461,7 +465,7 @@ fn fmt_hexdump_offset(offset: usize) -> &'static str {
     static LUT: OnceLock<Box<[Box<str>]>> = OnceLock::new();
     let lut = LUT.get_or_init(|| {
         (0..=HEXDUMP_OFFSET_LUT_MAX)
-            .map(|i| format!("0x{:>6x}  ", i).into_boxed_str())
+            .map(|i| fmt_hexdump_offset_owned(i))
             .collect::<Vec<_>>()
             .into_boxed_slice()
     });
