@@ -1489,6 +1489,9 @@ mod tests {
     }
 }
 
+const STREAM_SEARCH_MODAL_TITLE: &str = "Stream search";
+const STREAM_SEARCH_MODAL_HELP: &str =
+    "Enter = apply   Esc = cancel   Ctrl+u = clear   (n/N next/prev, Tab switch stream)";
 const STREAM_SEARCH_STATUS_TYPE_TO_SEARCH: &str = "type to search";
 const STREAM_SEARCH_STATUS_MATCH_FOUND: &str = "match found (n/N to navigate)";
 const STREAM_SEARCH_STATUS_NO_MATCHES: &str = "no matches";
@@ -1509,7 +1512,7 @@ fn render_search_modal(
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .title("Stream search")
+        .title(STREAM_SEARCH_MODAL_TITLE)
         .style(Style::default().bg(c_panel()).fg(c_text()));
     f.render_widget(block, area);
 
@@ -1557,7 +1560,7 @@ fn render_search_modal(
         ]),
         Line::from(Span::raw("")),
         Line::from(Span::styled(
-            "Enter = apply   Esc = cancel   Ctrl+u = clear   (n/N next/prev, Tab switch stream)",
+            STREAM_SEARCH_MODAL_HELP,
             Style::default().fg(c_muted()),
         )),
     ];
