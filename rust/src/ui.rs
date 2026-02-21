@@ -352,6 +352,15 @@ impl App {
             }
             Modal::StreamSearch => {
                 self.stream_search.push(c);
+                self.stream_last_match = None;
+                self.stream_scroll = 0;
+
+                if self.view == View::Stream {
+                    if let Some(fl) = self.selected_flow() {
+                        let bytes = build_stream_bytes(&self.rows, fl, self.stream_tab);
+                        self.stream_match_count = self.count_stream_matches(&bytes);
+                    }
+                }
             }
             Modal::None => {}
         }
@@ -368,6 +377,15 @@ impl App {
             }
             Modal::StreamSearch => {
                 self.stream_search.pop();
+                self.stream_last_match = None;
+                self.stream_scroll = 0;
+
+                if self.view == View::Stream {
+                    if let Some(fl) = self.selected_flow() {
+                        let bytes = build_stream_bytes(&self.rows, fl, self.stream_tab);
+                        self.stream_match_count = self.count_stream_matches(&bytes);
+                    }
+                }
             }
             Modal::None => {}
         }
@@ -386,6 +404,7 @@ impl App {
                 self.stream_search.clear();
                 self.stream_last_match = None;
                 self.stream_match_count = 0;
+                self.stream_scroll = 0;
             }
             Modal::None => {}
         }
