@@ -1487,6 +1487,12 @@ mod tests {
     fn search_modal_status_type_to_search_is_stable() {
         assert_eq!(STREAM_SEARCH_STATUS_TYPE_TO_SEARCH, "type to search");
     }
+
+    #[test]
+    fn stream_search_modal_help_mentions_navigation_keys() {
+        assert!(STREAM_SEARCH_MODAL_HELP.contains("n/N"));
+        assert!(STREAM_SEARCH_MODAL_HELP.contains("Tab"));
+    }
 }
 
 const STREAM_SEARCH_MODAL_TITLE: &str = "Stream search";
