@@ -1451,7 +1451,8 @@ mod tests {
     #[test]
     fn highlight_all_matches_cap_affects_collected_positions() {
         // With a small cap, we should collect fewer matches than exist.
-        let bytes = b"ab".repeat(300);
+        let n = 300usize;
+        let bytes = b"ab".repeat(n);
         let needle = b"ab";
 
         let small_cap = (STREAM_MATCH_HIGHLIGHT_CAP / 10).max(1);
@@ -1460,7 +1461,7 @@ mod tests {
             crate::search::find_all_subslice_positions(&bytes, needle, STREAM_MATCH_HIGHLIGHT_CAP);
 
         assert_eq!(small.len(), small_cap.min(300));
-        assert_eq!(big.len(), 300);
+        assert_eq!(big.len(), n);
     }
 
     #[test]
