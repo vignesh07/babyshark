@@ -1,7 +1,7 @@
 use crate::casefile::CaseFile;
-use chrono::Local;
 use crate::flow::{FlowIndex, FlowStats};
 use crate::pcap::{FlowDir, PacketRow};
+use chrono::Local;
 // stream module referenced via `crate::stream::...`
 use crate::ui_filter::FlowFilter;
 use anyhow::Result;
@@ -351,7 +351,6 @@ impl App {
             crate::report::ReportOptions::default(),
         )
     }
-
 }
 
 pub fn run_tui(app: &mut App) -> Result<()> {
@@ -416,13 +415,19 @@ fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec
                 let abs = offset + i;
                 let in_hl = abs >= hl_start && abs < hl_end;
                 let st = if in_hl {
-                    Style::default().fg(Color::Black).bg(c_accent()).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Color::Black)
+                        .bg(c_accent())
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(c_muted())
                 };
                 spans.push(Span::styled(format!("{:02x}", chunk[i]), st));
             } else {
-                spans.push(Span::styled("..", Style::default().fg(c_muted()).add_modifier(Modifier::DIM)));
+                spans.push(Span::styled(
+                    "..",
+                    Style::default().fg(c_muted()).add_modifier(Modifier::DIM),
+                ));
             }
         }
 
@@ -435,7 +440,10 @@ fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec
                 let abs = offset + i;
                 let in_hl = abs >= hl_start && abs < hl_end;
                 let st = if in_hl {
-                    Style::default().fg(Color::Black).bg(c_accent()).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Color::Black)
+                        .bg(c_accent())
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(if byte_is_printable(chunk[i]) {
                         c_text()
@@ -1000,7 +1008,10 @@ mod tests {
         let lines = bytes_to_pretty_lines(bytes, Some((1, 2)));
         assert_eq!(lines.len(), 1);
 
-        let want = Style::default().fg(Color::Black).bg(c_accent()).add_modifier(Modifier::BOLD);
+        let want = Style::default()
+            .fg(Color::Black)
+            .bg(c_accent())
+            .add_modifier(Modifier::BOLD);
 
         // hex: "62" for 'b' should be highlighted
         let spans = &lines[0].spans;
