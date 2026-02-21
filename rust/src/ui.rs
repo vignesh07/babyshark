@@ -407,8 +407,6 @@ fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec
         }
 
         spans.push(Span::raw("  |"));
-        spans.push(Span::styled("ASCII", Style::default().fg(c_muted())));
-        spans.push(Span::raw("|"));
 
         // ascii
         for i in 0..HEXDUMP_COLS {
