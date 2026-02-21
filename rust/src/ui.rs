@@ -531,11 +531,12 @@ fn style_current_match() -> Style {
         .add_modifier(Modifier::BOLD)
 }
 
+fn style_any_match_base() -> Style {
+    Style::default().fg(Color::Black).bg(c_accent())
+}
+
 fn style_any_match() -> Style {
-    Style::default()
-        .fg(Color::Black)
-        .bg(c_accent())
-        .add_modifier(Modifier::DIM)
+    style_any_match_base().add_modifier(Modifier::DIM)
 }
 
 fn first_match_and_scroll(bytes: &[u8], needle: &[u8]) -> Option<(usize, u16)> {
@@ -1455,10 +1456,7 @@ mod tests {
     #[test]
     fn match_styles_distinguish_current_from_other_matches() {
         assert_ne!(style_current_match(), style_any_match());
-        assert_ne!(
-            style_any_match(),
-            Style::default().fg(Color::Black).bg(c_accent()),
-        );
+        assert_ne!(style_any_match(), style_any_match_base(),);
     }
 
     #[test]
