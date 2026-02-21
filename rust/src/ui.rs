@@ -459,7 +459,7 @@ fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec
             }
         }
 
-        spans.push(Span::raw("|"));
+        spans.push(Span::styled("|", Style::default().fg(c_muted()).add_modifier(Modifier::DIM)));
 
         lines.push(Line::from(spans));
         offset += HEXDUMP_COLS;
