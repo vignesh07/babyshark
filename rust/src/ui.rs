@@ -403,7 +403,7 @@ fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec
         let mut spans: Vec<Span> = Vec::new();
         spans.push(Span::styled(
             format!("{:08x}  ", offset),
-            Style::default().fg(c_muted()),
+            Style::default().fg(c_muted()).add_modifier(Modifier::DIM),
         ));
 
         // hex bytes with spacing and a mid-group separator for readability
