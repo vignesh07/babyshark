@@ -211,6 +211,7 @@ impl App {
 
     fn tab_next(&mut self) {
         if self.view != View::Stream {
+            // Only meaningful in Stream view; keep other views from mutating stream-tab state.
             self.stream_last_match = None;
             self.stream_match_count = 0;
             return;
