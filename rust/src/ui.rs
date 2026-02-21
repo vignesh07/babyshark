@@ -834,11 +834,15 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         String::new()
                     } else {
                         let total = app.stream_match_count;
-                        let cur = match_ordinal(&match_positions, app.stream_last_match)
-                            .map(|i| i + 1)
-                            .unwrap_or(0);
-                        let cur_disp = if total == 0 { 0 } else { cur.max(1) };
-                        format!("  search=\"{}\" {cur_disp}/{total}", app.stream_search)
+                        if total == 0 {
+                            format!("  search=\"{}\" (0 matches)", app.stream_search)
+                        } else {
+                            let cur = match_ordinal(&match_positions, app.stream_last_match)
+                                .map(|i| i + 1)
+                                .unwrap_or(0);
+                            let cur_disp = cur.max(1);
+                            format!("  search=\"{}\" {cur_disp}/{total}", app.stream_search)
+                        }
                     };
 
                     let title = format!(
