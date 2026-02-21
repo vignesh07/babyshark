@@ -172,6 +172,7 @@ impl App {
     fn open_stream(&mut self) {
         self.view = View::Stream;
         self.stream_scroll = 0;
+        self.stream_last_match = None;
     }
 
     fn back(&mut self) {
