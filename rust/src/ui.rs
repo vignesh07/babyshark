@@ -904,7 +904,11 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             app.move_down();
                             flow_state.select(Some(app.selected_row));
                         }
-                        View::Stream => app.scroll_down(),
+                        View::Stream => {
+                            app.scroll_down();
+                            // manual scroll clears active match highlight
+                            app.stream_last_match = None;
+                        }
                         _ => {}
                     },
                     KeyCode::Up | KeyCode::Char('k') => match app.view {
@@ -912,7 +916,11 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             app.move_up();
                             flow_state.select(Some(app.selected_row));
                         }
-                        View::Stream => app.scroll_up(),
+                        View::Stream => {
+                            app.scroll_up();
+                            // manual scroll clears active match highlight
+                            app.stream_last_match = None;
+                        }
                         _ => {}
                     },
                     _ => {}
