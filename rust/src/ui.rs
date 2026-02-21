@@ -1600,6 +1600,7 @@ mod tests {
     fn stream_search_modal_help_mentions_navigation_keys() {
         assert!(STREAM_SEARCH_MODAL_HELP.contains("n/N"));
         assert!(STREAM_SEARCH_MODAL_HELP.contains("Tab"));
+        assert!(STREAM_SEARCH_MODAL_HELP.contains("Shift-Tab"));
     }
 
     #[test]
