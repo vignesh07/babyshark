@@ -891,9 +891,9 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         let delta_str = if let Some(prev) = prev_ts {
                             let d = r.ts.signed_duration_since(prev);
                             let ms = d.num_microseconds().unwrap_or(0) as f64 / 1000.0;
-                            format!("+{:>7.3}ms", ms)
+                            format!("{ms:+8.3}ms")
                         } else {
-                            "   (start)".to_string()
+                            format!("{ms:+8.3}ms", ms = 0.0)
                         };
                         prev_ts = Some(r.ts);
 
