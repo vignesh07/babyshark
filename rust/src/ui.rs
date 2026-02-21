@@ -822,11 +822,10 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         crate::search::find_all_subslice_positions(&bytes, needle, STREAM_MATCH_HIGHLIGHT_CAP)
                     };
                     app.stream_match_count = match_positions.len();
-                    let mut match_ranges: Vec<(usize, usize)> = match_positions
+                    let match_ranges: Vec<(usize, usize)> = match_positions
                         .iter()
                         .map(|pos| (*pos, pos.saturating_add(needle.len())))
                         .collect();
-                    match_ranges.sort_unstable();
 
                     let current = app.stream_last_match.map(|pos| (pos, needle.len()));
 
