@@ -386,11 +386,11 @@ fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec
                 let st = if in_hl {
                     Style::default().fg(c_bg()).bg(c_accent()).add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default().fg(Color::Rgb(170, 180, 200))
+                    Style::default().fg(c_muted())
                 };
                 spans.push(Span::styled(format!("{:02x}", chunk[i]), st));
             } else {
-                spans.push(Span::styled("  ", Style::default().fg(Color::Rgb(170, 180, 200))));
+                spans.push(Span::styled("  ", Style::default().fg(c_muted())));
             }
         }
 
