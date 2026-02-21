@@ -262,6 +262,9 @@ impl App {
     }
 
     fn close_modal_cancel(&mut self) {
+        if self.modal == Modal::StreamSearch {
+            self.stream_last_match = None;
+        }
         self.modal = Modal::None;
     }
 
