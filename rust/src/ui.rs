@@ -191,6 +191,7 @@ impl App {
             StreamTab::BtoA => StreamTab::Combined,
         };
         self.stream_scroll = 0;
+        self.stream_last_match = None;
     }
 
     fn scroll_down(&mut self) {
