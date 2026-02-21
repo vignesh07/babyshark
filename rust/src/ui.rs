@@ -365,8 +365,14 @@ fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec
             Style::default().fg(c_muted()),
         ));
 
-        // hex bytes (16 * 3 - 1 = 47 chars) padded to width 47
+        // hex bytes with spacing and a mid-group separator for readability
         for i in 0..16 {
+            if i == 8 {
+                spans.push(Span::raw("  "));
+            } else if i != 0 {
+                spans.push(Span::raw(" "));
+            }
+
             if i < chunk.len() {
                 let abs = offset + i;
                 let in_hl = abs >= hl_start && abs < hl_end;
@@ -379,13 +385,9 @@ fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec
             } else {
                 spans.push(Span::styled("  ", Style::default().fg(Color::Rgb(170, 180, 200))));
             }
-
-            if i != 15 {
-                spans.push(Span::raw(" "));
-            }
         }
 
-        spans.push(Span::raw("  "));
+        spans.push(Span::raw("  |"));
 
         // ascii
         for i in 0..16 {
@@ -402,6 +404,8 @@ fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec
                 spans.push(Span::raw(" "));
             }
         }
+
+        spans.push(Span::raw("|"));
 
         lines.push(Line::from(spans));
         offset += 16;
