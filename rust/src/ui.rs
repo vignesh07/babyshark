@@ -416,7 +416,7 @@ fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec
                 let abs = offset + i;
                 let in_hl = abs >= hl_start && abs < hl_end;
                 let st = if in_hl {
-                    Style::default().fg(c_bg()).bg(c_accent()).add_modifier(Modifier::BOLD)
+                    Style::default().fg(Color::Black).bg(c_accent()).add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(c_muted())
                 };
@@ -435,7 +435,7 @@ fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec
                 let abs = offset + i;
                 let in_hl = abs >= hl_start && abs < hl_end;
                 let st = if in_hl {
-                    Style::default().fg(c_bg()).bg(c_accent()).add_modifier(Modifier::BOLD)
+                    Style::default().fg(Color::Black).bg(c_accent()).add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(if byte_is_printable(chunk[i]) {
                         c_text()
@@ -1000,7 +1000,7 @@ mod tests {
         let lines = bytes_to_pretty_lines(bytes, Some((1, 2)));
         assert_eq!(lines.len(), 1);
 
-        let want = Style::default().fg(c_bg()).bg(c_accent()).add_modifier(Modifier::BOLD);
+        let want = Style::default().fg(Color::Black).bg(c_accent()).add_modifier(Modifier::BOLD);
 
         // hex: "62" for 'b' should be highlighted
         let spans = &lines[0].spans;
