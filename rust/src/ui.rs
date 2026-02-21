@@ -557,6 +557,7 @@ const HEXDUMP_GUTTER_END: &str = " |";
 const HEXDUMP_SPLIT: &str = "  ";
 // Heuristic: roughly enough spans for offset + hex bytes + separators + ascii + end gutter.
 const HEXDUMP_SPANS_CAP: usize = 8 + HEXDUMP_COLS * 4;
+// Single space used in various UI renderings (including hexdump byte separators).
 const UI_ONE_SPACE: &str = " ";
 const UI_SPACER: &str = "  ";
 const STREAM_MATCH_HIGHLIGHT_CAP: usize = 2000;
