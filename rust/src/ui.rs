@@ -348,6 +348,11 @@ fn byte_ascii(b: u8) -> char {
     if c.is_ascii_graphic() || c == ' ' { c } else { '.' }
 }
 
+fn byte_is_printable(b: u8) -> bool {
+    let c = b as char;
+    c.is_ascii_graphic() || c == ' '
+}
+
 const HEXDUMP_COLS: usize = 16;
 
 fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec<Line<'static>> {
@@ -399,7 +404,7 @@ fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec
                 let st = if in_hl {
                     Style::default().fg(c_bg()).bg(c_accent()).add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default().fg(c_text())
+                    Style::default().fg(if byte_is_printable(chunk[i]) { c_text() } else { c_muted() })
                 };
                 spans.push(Span::styled(byte_ascii(chunk[i]).to_string(), st));
             } else {
