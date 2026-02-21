@@ -1004,17 +1004,17 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
             let footer_line = match app.modal {
                 Modal::Filter => Line::from(vec![
                     Span::styled("FILTER", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
-                    Span::raw("  "),
+                    Span::raw(UI_SPACER),
                     Span::styled("type, Enter apply, Esc cancel, Ctrl+u clear", Style::default().fg(c_muted())),
                 ]),
                 Modal::Bookmark => Line::from(vec![
                     Span::styled("BOOKMARK", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
-                    Span::raw("  "),
+                    Span::raw(UI_SPACER),
                     Span::styled("type note, Enter save, Esc cancel, Ctrl+u clear", Style::default().fg(c_muted())),
                 ]),
                 Modal::StreamSearch => Line::from(vec![
                     Span::styled("SEARCH", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
-                    Span::raw("  "),
+                    Span::raw(UI_SPACER),
                     Span::styled("type query, Enter apply, Esc cancel, Ctrl+u clear", Style::default().fg(c_muted())),
                 ]),
                 Modal::None => match app.view {
