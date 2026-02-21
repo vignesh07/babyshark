@@ -1037,8 +1037,6 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         }
                         View::Stream => {
                             app.scroll_down();
-                            // manual scroll clears active match highlight
-                            app.stream_last_match = None;
                         }
                         _ => {}
                     },
@@ -1049,8 +1047,6 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         }
                         View::Stream => {
                             app.scroll_up();
-                            // manual scroll clears active match highlight
-                            app.stream_last_match = None;
                         }
                         _ => {}
                     },
@@ -1303,6 +1299,23 @@ mod tests {
 
         assert_eq!(small.len(), 200);
         assert_eq!(big.len(), 300);
+    }
+
+
+    #[test]
+    fn manual_scroll_does_not_clear_current_match() {
+        // This is a behavioral test of App's scroll methods.
+        // Scrolling is purely a view offset and should not clear the active match selection.
+        let mut app = App::new("/tmp/nope.pcap", Vec::new(), FlowIndex { flows: Vec::new() });
+        app.view = View::Stream;
+        app.stream_last_match = Some(123);
+        app.stream_scroll = 10;
+
+        app.scroll_down();
+        assert_eq!(app.stream_last_match, Some(123));
+
+        app.scroll_up();
+        assert_eq!(app.stream_last_match, Some(123));
     }
 }
 
