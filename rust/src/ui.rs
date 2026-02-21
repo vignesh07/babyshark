@@ -210,6 +210,12 @@ impl App {
     }
 
     fn tab_next(&mut self) {
+        if self.view != View::Stream {
+            self.stream_last_match = None;
+            self.stream_match_count = 0;
+            return;
+        }
+
         self.stream_tab = match self.stream_tab {
             StreamTab::Combined => StreamTab::AtoB,
             StreamTab::AtoB => StreamTab::BtoA,
@@ -219,21 +225,16 @@ impl App {
 
         // Preserve search context when switching tabs: if we have a query,
         // jump to the first match in the new stream view.
-        if self.view == View::Stream {
-            if let Some(fl) = self.selected_flow() {
-                let bytes = build_stream_bytes(&self.rows, fl, self.stream_tab);
-                let needle = self.stream_search.as_bytes();
+        if let Some(fl) = self.selected_flow() {
+            let bytes = build_stream_bytes(&self.rows, fl, self.stream_tab);
+            let needle = self.stream_search.as_bytes();
 
-                self.stream_match_count = self.count_stream_matches(&bytes);
+            self.stream_match_count = self.count_stream_matches(&bytes);
 
-                if let Some((pos, scroll)) = first_match_and_scroll(&bytes, needle) {
-                    self.stream_last_match = Some(pos);
-                    self.stream_scroll = scroll;
-                }
+            if let Some((pos, scroll)) = first_match_and_scroll(&bytes, needle) {
+                self.stream_last_match = Some(pos);
+                self.stream_scroll = scroll;
             }
-        } else {
-            self.stream_last_match = None;
-            self.stream_match_count = 0;
         }
     }
 
@@ -1830,6 +1831,19 @@ mod tests {
         app.view = View::Flows;
         app.stream_tab = StreamTab::Combined;
         app.tab_prev();
+        assert!(matches!(app.stream_tab, StreamTab::Combined));
+    }
+
+    #[test]
+    fn tab_next_is_noop_outside_stream_view() {
+        let mut app = App::new(
+            "/tmp/nope.pcap",
+            Vec::new(),
+            FlowIndex { flows: Vec::new() },
+        );
+        app.view = View::Flows;
+        app.stream_tab = StreamTab::Combined;
+        app.tab_next();
         assert!(matches!(app.stream_tab, StreamTab::Combined));
     }
 }
