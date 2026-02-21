@@ -425,7 +425,7 @@ fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec
                 } else {
                     Style::default().fg(c_muted())
                 };
-                spans.push(Span::styled(format!("{:02x}", chunk[i]), st));
+                spans.push(Span::styled(format!("{:02X}", chunk[i]), st));
             } else {
                 spans.push(Span::styled(
                     "..",
