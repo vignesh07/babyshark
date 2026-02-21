@@ -131,13 +131,16 @@ fn decode_packet(index: usize, ts: DateTime<Utc>, data: &[u8]) -> PacketRow {
         if let (Some(src), Some(dst), Some(proto), Some(sp), Some(dp)) =
             (row.src, row.dst, row.proto, row.src_port, row.dst_port)
         {
-            row.flow = Some(FlowKey {
+            let fk = FlowKey {
                 src,
                 dst,
                 src_port: sp,
                 dst_port: dp,
                 proto,
-            });
+            };
+            let (_canon, flipped) = fk.canonical();
+            row.flow_dir = Some(if flipped { FlowDir::BtoA } else { FlowDir::AtoB });
+            row.flow = Some(fk);
         }
 
         row.summary = summarize(&row);
@@ -179,13 +182,16 @@ fn decode_packet(index: usize, ts: DateTime<Utc>, data: &[u8]) -> PacketRow {
         if let (Some(src), Some(dst), Some(proto), Some(sp), Some(dp)) =
             (row.src, row.dst, row.proto, row.src_port, row.dst_port)
         {
-            row.flow = Some(FlowKey {
+            let fk = FlowKey {
                 src,
                 dst,
                 src_port: sp,
                 dst_port: dp,
                 proto,
-            });
+            };
+            let (_canon, flipped) = fk.canonical();
+            row.flow_dir = Some(if flipped { FlowDir::BtoA } else { FlowDir::AtoB });
+            row.flow = Some(fk);
         }
 
         row.summary = summarize(&row);

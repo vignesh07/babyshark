@@ -1,5 +1,6 @@
 use crate::flow::{FlowIndex, FlowStats};
 use crate::pcap::{FlowDir, PacketRow};
+use crate::stream::{build_stream, StreamData};
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
@@ -7,8 +8,8 @@ use crossterm::execute;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
+use ratatui::text::{Line, Span, Text};
+use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap};
 use ratatui::Terminal;
 use std::io::{self, Stdout};
 use std::time::Duration;
@@ -17,6 +18,14 @@ use std::time::Duration;
 pub enum View {
     Flows,
     Packets,
+    Stream,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StreamTab {
+    AtoB,
+    BtoA,
+    Combined,
 }
 
 pub struct App {
@@ -24,6 +33,8 @@ pub struct App {
     pub flows: FlowIndex,
     pub selected_flow: usize,
     pub view: View,
+    pub stream_tab: StreamTab,
+    pub stream_scroll: u16,
 }
 
 impl App {
@@ -33,6 +44,8 @@ impl App {
             flows,
             selected_flow: 0,
             view: View::Flows,
+            stream_tab: StreamTab::Combined,
+            stream_scroll: 0,
         }
     }
 
@@ -60,8 +73,35 @@ impl App {
         self.view = View::Packets;
     }
 
+    fn open_stream(&mut self) {
+        self.view = View::Stream;
+        self.stream_scroll = 0;
+    }
+
     fn back(&mut self) {
-        self.view = View::Flows;
+        self.view = match self.view {
+            View::Flows => View::Flows,
+            View::Packets => View::Flows,
+            View::Stream => View::Packets,
+        };
+        self.stream_scroll = 0;
+    }
+
+    fn tab_next(&mut self) {
+        self.stream_tab = match self.stream_tab {
+            StreamTab::Combined => StreamTab::AtoB,
+            StreamTab::AtoB => StreamTab::BtoA,
+            StreamTab::BtoA => StreamTab::Combined,
+        };
+        self.stream_scroll = 0;
+    }
+
+    fn scroll_down(&mut self) {
+        self.stream_scroll = self.stream_scroll.saturating_add(1);
+    }
+
+    fn scroll_up(&mut self) {
+        self.stream_scroll = self.stream_scroll.saturating_sub(1);
     }
 }
 
@@ -82,6 +122,43 @@ pub fn run_tui(app: &mut App) -> Result<()> {
     res
 }
 
+fn bytes_to_pretty_text(bytes: &[u8]) -> Text<'static> {
+    // Render as ASCII with a small hex gutter (simple + fast). Not a full hexdump yet.
+    // Replace non-printable bytes with '.'
+    let mut lines: Vec<Line> = Vec::new();
+    let mut offset: usize = 0;
+    while offset < bytes.len() {
+        let chunk = &bytes[offset..bytes.len().min(offset + 16)];
+        let hex = chunk
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let ascii = chunk
+            .iter()
+            .map(|b| {
+                let c = *b as char;
+                if c.is_ascii_graphic() || c == ' ' {
+                    c
+                } else {
+                    '.'
+                }
+            })
+            .collect::<String>();
+        lines.push(Line::from(vec![
+            Span::styled(format!("{:08x}  ", offset), Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("{:<47}", hex),
+                Style::default().fg(Color::Gray),
+            ),
+            Span::raw("  "),
+            Span::raw(ascii),
+        ]));
+        offset += 16;
+    }
+    Text::from(lines)
+}
+
 fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) -> Result<()> {
     let mut flow_state = ListState::default();
     if !app.flows.flows.is_empty() {
@@ -99,10 +176,14 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
             let title = match app.view {
                 View::Flows => "PCAP Viewer (MVP) — Flows",
                 View::Packets => "PCAP Viewer (MVP) — Packets",
+                View::Stream => "PCAP Viewer (MVP) — Follow Stream",
             };
 
             let header = Paragraph::new(Line::from(vec![
-                Span::styled("babyshark", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "babyshark",
+                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                ),
                 Span::raw("  "),
                 Span::styled(
                     format!("flows: {}  packets: {}", app.flows.flows.len(), app.rows.len()),
@@ -128,7 +209,10 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             let title = fl.label();
                             let meta = format!(" pkts={} bytes={}", fl.total_packets, fl.total_bytes);
                             let line = Line::from(vec![
-                                Span::styled(format!("{:>3} ", i + 1), Style::default().fg(Color::DarkGray)),
+                                Span::styled(
+                                    format!("{:>3} ", i + 1),
+                                    Style::default().fg(Color::DarkGray),
+                                ),
                                 Span::raw(title),
                                 Span::styled(meta, Style::default().fg(Color::Gray)),
                             ]);
@@ -169,8 +253,14 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             let line = Line::from(vec![
                                 Span::styled(dir, Style::default().fg(Color::Cyan)),
                                 Span::raw(" "),
-                                Span::styled(format!("#{:<4} ", r.index), Style::default().fg(Color::DarkGray)),
-                                Span::styled(format!("len={:<4} ", r.len), Style::default().fg(Color::Gray)),
+                                Span::styled(
+                                    format!("#{:<4} ", r.index),
+                                    Style::default().fg(Color::DarkGray),
+                                ),
+                                Span::styled(
+                                    format!("len={:<4} ", r.len),
+                                    Style::default().fg(Color::Gray),
+                                ),
                                 Span::raw(r.summary.clone()),
                             ]);
                             ListItem::new(line)
@@ -180,9 +270,40 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     let list = List::new(items).block(
                         Block::default()
                             .borders(Borders::ALL)
-                            .title("Packets (Esc back)"),
+                            .title("Packets (f follow stream, Esc back)"),
                     );
                     f.render_widget(list, body_chunks[0]);
+                }
+                View::Stream => {
+                    let Some(fl) = app.selected_flow() else {
+                        let p = Paragraph::new("No flow selected")
+                            .block(Block::default().borders(Borders::ALL).title("Stream"));
+                        f.render_widget(p, body_chunks[0]);
+                        return;
+                    };
+
+                    let stream: StreamData = build_stream(&app.rows, fl);
+                    let (label, bytes) = match app.stream_tab {
+                        StreamTab::Combined => {
+                            let mut c = stream.a_to_b.clone();
+                            c.extend_from_slice(b"\n\n---\n\n");
+                            c.extend_from_slice(&stream.b_to_a);
+                            ("Combined", c)
+                        }
+                        StreamTab::AtoB => ("A→B", stream.a_to_b),
+                        StreamTab::BtoA => ("B→A", stream.b_to_a),
+                    };
+
+                    let text = bytes_to_pretty_text(&bytes);
+                    let p = Paragraph::new(text)
+                        .block(
+                            Block::default()
+                                .borders(Borders::ALL)
+                                .title(format!("Stream: {label} (Tab switch, ↑/↓ scroll, Esc back)")),
+                        )
+                        .wrap(Wrap { trim: false })
+                        .scroll((app.stream_scroll, 0));
+                    f.render_widget(p, body_chunks[0]);
                 }
             }
 
@@ -235,11 +356,22 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     Span::raw(" quit"),
                 ]),
                 View::Packets => Line::from(vec![
+                    Span::styled("f", Style::default().fg(Color::Green)),
+                    Span::raw(" stream  "),
                     Span::styled("Esc", Style::default().fg(Color::Green)),
                     Span::raw(" back  "),
                     Span::styled("q", Style::default().fg(Color::Green)),
-                    Span::raw(" quit  "),
-                    Span::styled("(next: follow stream)", Style::default().fg(Color::Gray)),
+                    Span::raw(" quit"),
+                ]),
+                View::Stream => Line::from(vec![
+                    Span::styled("Tab", Style::default().fg(Color::Green)),
+                    Span::raw(" switch  "),
+                    Span::styled("↑/↓", Style::default().fg(Color::Green)),
+                    Span::raw(" scroll  "),
+                    Span::styled("Esc", Style::default().fg(Color::Green)),
+                    Span::raw(" back  "),
+                    Span::styled("q", Style::default().fg(Color::Green)),
+                    Span::raw(" quit"),
                 ]),
             };
 
@@ -255,7 +387,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                 match key.code {
                     KeyCode::Char('q') => return Ok(()),
                     KeyCode::Esc => {
-                        if app.view == View::Packets {
+                        if app.view != View::Flows {
                             app.back();
                         }
                     }
@@ -264,16 +396,34 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             app.open_packets();
                         }
                     }
+                    KeyCode::Char('f') => {
+                        if app.view == View::Packets {
+                            app.open_stream();
+                        }
+                    }
+                    KeyCode::Tab => {
+                        if app.view == View::Stream {
+                            app.tab_next();
+                        }
+                    }
                     KeyCode::Down | KeyCode::Char('j') => {
-                        if app.view == View::Flows {
-                            app.flow_next();
-                            flow_state.select(Some(app.selected_flow));
+                        match app.view {
+                            View::Flows => {
+                                app.flow_next();
+                                flow_state.select(Some(app.selected_flow));
+                            }
+                            View::Stream => app.scroll_down(),
+                            _ => {}
                         }
                     }
                     KeyCode::Up | KeyCode::Char('k') => {
-                        if app.view == View::Flows {
-                            app.flow_prev();
-                            flow_state.select(Some(app.selected_flow));
+                        match app.view {
+                            View::Flows => {
+                                app.flow_prev();
+                                flow_state.select(Some(app.selected_flow));
+                            }
+                            View::Stream => app.scroll_up(),
+                            _ => {}
                         }
                     }
                     _ => {}
