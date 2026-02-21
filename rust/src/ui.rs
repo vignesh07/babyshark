@@ -552,7 +552,7 @@ fn bytes_to_pretty_lines(
 
         let mut spans: Vec<Span> = Vec::new();
         spans.push(Span::styled(
-            format!("{:>8x}  ", offset),
+            format!("0x{:>6x}  ", offset),
             Style::default().fg(c_muted()).add_modifier(Modifier::DIM),
         ));
 
@@ -1382,7 +1382,7 @@ mod tests {
         let offset = &spans[0].content;
         assert!(offset.ends_with("  "));
         // Should contain spaces then a single '0' (not "00000000").
-        assert!(offset.contains("       0"));
+        assert!(offset.contains("0x     0"));
         assert!(!offset.contains("00000000"));
     }
 
