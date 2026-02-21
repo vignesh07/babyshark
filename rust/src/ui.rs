@@ -449,9 +449,27 @@ fn byte_is_printable(b: u8) -> bool {
     }
 }
 
-fn fmt_hexdump_offset(offset: usize) -> String {
-    // Keep fixed width for column alignment while making hex-ness explicit.
-    format!("0x{:>6x}  ", offset)
+fn fmt_hexdump_offset(offset: usize) -> &'static str {
+    use std::sync::OnceLock;
+
+    // Precompute offsets for 0..=0xFFFF (more than enough for typical small captures).
+    // If we ever exceed this, fall back to a formatted string.
+    const MAX: usize = 0xFFFF;
+
+    static LUT: OnceLock<Box<[Box<str>]>> = OnceLock::new();
+    let lut = LUT.get_or_init(|| {
+        (0..=MAX)
+            .map(|i| format!("0x{:>6x}  ", i).into_boxed_str())
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
+    });
+
+    if offset <= MAX {
+        &lut[offset]
+    } else {
+        // Leak a boxed str for rare huge offsets; avoids changing call sites.
+        Box::leak(format!("0x{:>6x}  ", offset).into_boxed_str())
+    }
 }
 
 fn hex_byte_upper(b: u8) -> &'static str {
