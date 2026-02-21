@@ -430,11 +430,12 @@ fn byte_is_printable(b: u8) -> bool {
 fn hex_byte_upper(b: u8) -> &'static str {
     use std::sync::OnceLock;
 
-    static LUT: OnceLock<Vec<Box<str>>> = OnceLock::new();
+    static LUT: OnceLock<Box<[Box<str>]>> = OnceLock::new();
     let lut = LUT.get_or_init(|| {
         (0u16..=255)
             .map(|i| format!("{:02X}", i as u8).into_boxed_str())
-            .collect()
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
     });
     &lut[b as usize]
 }
