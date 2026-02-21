@@ -407,6 +407,40 @@ fn first_match_and_scroll(bytes: &[u8], needle: &[u8]) -> Option<(usize, u16)> {
     Some((pos, scroll))
 }
 
+fn next_match_and_scroll(
+    bytes: &[u8],
+    needle: &[u8],
+    last_match: Option<usize>,
+) -> Option<(usize, u16)> {
+    if needle.is_empty() {
+        return None;
+    }
+
+    let start = last_match.map(|p| p + needle.len()).unwrap_or(0);
+    let pos = crate::search::find_next_subslice_from(bytes, needle, start)
+        .or_else(|| crate::search::find_next_subslice_from(bytes, needle, 0))?;
+
+    let scroll = ((pos + (HEXDUMP_COLS - 1)) / HEXDUMP_COLS) as u16;
+    Some((pos, scroll))
+}
+
+fn prev_match_and_scroll(
+    bytes: &[u8],
+    needle: &[u8],
+    last_match: Option<usize>,
+) -> Option<(usize, u16)> {
+    if needle.is_empty() {
+        return None;
+    }
+
+    let before = last_match.unwrap_or(bytes.len()).saturating_sub(1);
+    let pos = crate::search::find_prev_subslice_before(bytes, needle, before)
+        .or_else(|| crate::search::find_prev_subslice_before(bytes, needle, bytes.len()))?;
+
+    let scroll = ((pos + (HEXDUMP_COLS - 1)) / HEXDUMP_COLS) as u16;
+    Some((pos, scroll))
+}
+
 fn bytes_to_pretty_lines(
     bytes: &[u8],
     match_ranges: &[(usize, usize)],
@@ -861,24 +895,13 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     KeyCode::Char('n') => {
                         if app.view == View::Stream {
                             let needle = app.stream_search.as_bytes();
-                            if !needle.is_empty() {
-                                if let Some(fl) = app.selected_flow() {
-                                    let bytes = build_stream_bytes(&app.rows, fl, app.stream_tab);
-                                    let start = app
-                                        .stream_last_match
-                                        .map(|p| p + needle.len())
-                                        .unwrap_or(0);
-                                    let pos = crate::search::find_next_subslice_from(
-                                        &bytes, needle, start,
-                                    )
-                                    .or_else(|| {
-                                        crate::search::find_next_subslice_from(&bytes, needle, 0)
-                                    });
-                                    if let Some(pos) = pos {
-                                        app.stream_last_match = Some(pos);
-                                        app.stream_scroll =
-                                            ((pos + (HEXDUMP_COLS - 1)) / HEXDUMP_COLS) as u16;
-                                    }
+                            if let Some(fl) = app.selected_flow() {
+                                let bytes = build_stream_bytes(&app.rows, fl, app.stream_tab);
+                                if let Some((pos, scroll)) =
+                                    next_match_and_scroll(&bytes, needle, app.stream_last_match)
+                                {
+                                    app.stream_last_match = Some(pos);
+                                    app.stream_scroll = scroll;
                                 }
                             }
                         }
@@ -886,28 +909,13 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     KeyCode::Char('N') => {
                         if app.view == View::Stream {
                             let needle = app.stream_search.as_bytes();
-                            if !needle.is_empty() {
-                                if let Some(fl) = app.selected_flow() {
-                                    let bytes = build_stream_bytes(&app.rows, fl, app.stream_tab);
-                                    let before = app
-                                        .stream_last_match
-                                        .unwrap_or(bytes.len())
-                                        .saturating_sub(1);
-                                    let pos = crate::search::find_prev_subslice_before(
-                                        &bytes, needle, before,
-                                    )
-                                    .or_else(|| {
-                                        crate::search::find_prev_subslice_before(
-                                            &bytes,
-                                            needle,
-                                            bytes.len(),
-                                        )
-                                    });
-                                    if let Some(pos) = pos {
-                                        app.stream_last_match = Some(pos);
-                                        app.stream_scroll =
-                                            ((pos + (HEXDUMP_COLS - 1)) / HEXDUMP_COLS) as u16;
-                                    }
+                            if let Some(fl) = app.selected_flow() {
+                                let bytes = build_stream_bytes(&app.rows, fl, app.stream_tab);
+                                if let Some((pos, scroll)) =
+                                    prev_match_and_scroll(&bytes, needle, app.stream_last_match)
+                                {
+                                    app.stream_last_match = Some(pos);
+                                    app.stream_scroll = scroll;
                                 }
                             }
                         }
