@@ -855,7 +855,8 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         let cur = match_ordinal(&match_positions, app.stream_last_match)
                             .map(|i| i + 1)
                             .unwrap_or(0);
-                        format!("  search=\"{}\" {cur}/{total}", app.stream_search)
+                        let cur_disp = if total == 0 { 0 } else { cur.max(1) };
+                        format!("  search=\"{}\" {cur_disp}/{total}", app.stream_search)
                     };
 
                     let title = format!(
@@ -1406,6 +1407,18 @@ mod tests {
         // Should contain spaces then a single '0' (not "00000000").
         assert!(offset.contains("       0"));
         assert!(!offset.contains("00000000"));
+    }
+
+    #[test]
+    fn stream_title_uses_1_based_index_when_matches_exist() {
+        // Construct a minimal scenario where there are matches but no current selection.
+        let match_positions = vec![10usize, 20usize];
+        let total = match_positions.len();
+        let cur = match_ordinal(&match_positions, None)
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        let cur_disp = if total == 0 { 0 } else { cur.max(1) };
+        assert_eq!(cur_disp, 1);
     }
 }
 
