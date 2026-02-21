@@ -512,7 +512,7 @@ fn bytes_to_pretty_lines(
 
         let mut spans: Vec<Span> = Vec::new();
         spans.push(Span::styled(
-            format!("{:08x}  ", offset),
+            format!("{:>8x}  ", offset),
             Style::default().fg(c_muted()).add_modifier(Modifier::DIM),
         ));
 
@@ -1339,6 +1339,20 @@ mod tests {
         let spans = &lines[0].spans;
         assert!(spans.iter().any(|s| s.content.as_ref() == "⇥"));
         assert!(spans.iter().any(|s| s.content.as_ref() == "⏎"));
+    }
+
+    #[test]
+    fn hexdump_offset_is_right_aligned_no_leading_zeroes() {
+        let bytes = b"a";
+        let lines = bytes_to_pretty_lines(bytes, &[], None);
+        let spans = &lines[0].spans;
+
+        // First span is the offset column.
+        let offset = &spans[0].content;
+        assert!(offset.ends_with("  "));
+        // Should contain spaces then a single '0' (not "00000000").
+        assert!(offset.contains("       0"));
+        assert!(!offset.contains("00000000"));
     }
 }
 
