@@ -464,6 +464,7 @@ const HEXDUMP_GROUP: usize = HEXDUMP_COLS / 2;
 const HEXDUMP_GUTTER: &str = "  | ";
 const HEXDUMP_GUTTER_END: &str = " |";
 const HEXDUMP_SPLIT: &str = "  ";
+const HEXDUMP_SPANS_CAP: usize = 8 + HEXDUMP_COLS * 4;
 const STREAM_MATCH_HIGHLIGHT_CAP: usize = 2000;
 
 fn match_ordinal(match_positions: &[usize], current: Option<usize>) -> Option<usize> {
@@ -558,7 +559,7 @@ fn bytes_to_pretty_lines(
     while offset < bytes.len() {
         let chunk = &bytes[offset..bytes.len().min(offset + HEXDUMP_COLS)];
 
-        let mut spans: Vec<Span> = Vec::with_capacity(8 + HEXDUMP_COLS * 4);
+        let mut spans: Vec<Span> = Vec::with_capacity(HEXDUMP_SPANS_CAP);
         spans.push(Span::styled(
             fmt_hexdump_offset(offset),
             Style::default().fg(c_muted()).add_modifier(Modifier::DIM),
