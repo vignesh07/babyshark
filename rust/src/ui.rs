@@ -244,7 +244,7 @@ impl App {
                         if !needle.is_empty() {
                             if let Some(pos) = crate::search::find_subslice(&bytes, needle) {
                                 self.stream_last_match = Some(pos);
-                                self.stream_scroll = (pos / 16) as u16;
+                                self.stream_scroll = ((pos + (HEXDUMP_COLS - 1)) / HEXDUMP_COLS) as u16;
                             }
                         }
                     }
@@ -766,7 +766,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                         .or_else(|| crate::search::find_next_subslice_from(&bytes, needle, 0));
                                     if let Some(pos) = pos {
                                         app.stream_last_match = Some(pos);
-                                        app.stream_scroll = (pos / 16) as u16;
+                                        app.stream_scroll = ((pos + (HEXDUMP_COLS - 1)) / HEXDUMP_COLS) as u16;
                                     }
                                 }
                             }
@@ -783,7 +783,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                         .or_else(|| crate::search::find_prev_subslice_before(&bytes, needle, bytes.len()));
                                     if let Some(pos) = pos {
                                         app.stream_last_match = Some(pos);
-                                        app.stream_scroll = (pos / 16) as u16;
+                                        app.stream_scroll = ((pos + (HEXDUMP_COLS - 1)) / HEXDUMP_COLS) as u16;
                                     }
                                 }
                             }
