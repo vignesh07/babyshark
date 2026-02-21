@@ -1778,7 +1778,7 @@ mod tests {
     }
 
     #[test]
-    fn refresh_stream_match_count_with_empty_query_sets_zero() {
+    fn refresh_stream_match_count_is_noop_without_selected_flow() {
         let mut app = App::new(
             "/tmp/nope.pcap",
             Vec::new(),
@@ -1788,8 +1788,8 @@ mod tests {
         app.stream_search.clear();
         app.stream_match_count = 99;
         app.refresh_stream_match_count();
-        // With no selected flow, match count remains as-is; open_stream_search resets it.
-        // We just assert the helper doesn't crash.
+
+        // With no selected flow, refresh_stream_match_count() should be a no-op.
         assert_eq!(app.stream_match_count, 99);
     }
 }
