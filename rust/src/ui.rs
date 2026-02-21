@@ -1,7 +1,7 @@
 use crate::casefile::CaseFile;
 use crate::flow::{FlowIndex, FlowStats};
 use crate::pcap::{FlowDir, PacketRow};
-use crate::stream::{build_stream, StreamData};
+// stream module referenced via `crate::stream::...`
 use crate::ui_filter::FlowFilter;
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
@@ -16,6 +16,20 @@ use ratatui::Terminal;
 use std::io::{self, Stdout};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+
+fn build_stream_bytes(rows: &[PacketRow], fl: &FlowStats, tab: StreamTab) -> Vec<u8> {
+    let stream = crate::stream::build_stream(rows, fl);
+    match tab {
+        StreamTab::Combined => {
+            let mut c = stream.a_to_b;
+            c.extend_from_slice(b"\n\n---\n\n");
+            c.extend_from_slice(&stream.b_to_a);
+            c
+        }
+        StreamTab::AtoB => stream.a_to_b,
+        StreamTab::BtoA => stream.b_to_a,
+    }
+}
 
 // --- Theme (deep ocean) ---
 fn c_bg() -> Color {
@@ -225,17 +239,7 @@ impl App {
                 self.stream_last_match = None;
                 if self.view == View::Stream {
                     if let Some(fl) = self.selected_flow() {
-                        let stream = crate::stream::build_stream(&self.rows, fl);
-                        let bytes = match self.stream_tab {
-                            StreamTab::Combined => {
-                                let mut c = stream.a_to_b.clone();
-                                c.extend_from_slice(b"\n\n---\n\n");
-                                c.extend_from_slice(&stream.b_to_a);
-                                c
-                            }
-                            StreamTab::AtoB => stream.a_to_b,
-                            StreamTab::BtoA => stream.b_to_a,
-                        };
+                        let bytes = build_stream_bytes(&self.rows, fl, self.stream_tab);
                         let needle = self.stream_search.as_bytes();
                         if !needle.is_empty() {
                             if let Some(pos) = crate::search::find_subslice(&bytes, needle) {
@@ -536,16 +540,10 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         return;
                     };
 
-                    let stream: StreamData = build_stream(&app.rows, fl);
                     let (label, bytes) = match app.stream_tab {
-                        StreamTab::Combined => {
-                            let mut c = stream.a_to_b.clone();
-                            c.extend_from_slice(b"\n\n---\n\n");
-                            c.extend_from_slice(&stream.b_to_a);
-                            ("Combined", c)
-                        }
-                        StreamTab::AtoB => ("A→B", stream.a_to_b),
-                        StreamTab::BtoA => ("B→A", stream.b_to_a),
+                        StreamTab::Combined => ("Combined", build_stream_bytes(&app.rows, fl, app.stream_tab)),
+                        StreamTab::AtoB => ("A→B", build_stream_bytes(&app.rows, fl, app.stream_tab)),
+                        StreamTab::BtoA => ("B→A", build_stream_bytes(&app.rows, fl, app.stream_tab)),
                     };
 
                     let text = bytes_to_pretty_text(&bytes);
@@ -637,6 +635,8 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     View::Stream => Line::from(vec![
                         Span::styled("/", Style::default().fg(Color::Green)),
                         Span::raw(" search  "),
+                        Span::styled("n/N", Style::default().fg(Color::Green)),
+                        Span::raw(" next/prev  "),
                         Span::styled("Tab", Style::default().fg(Color::Green)),
                         Span::raw(" switch  "),
                         Span::styled("↑/↓", Style::default().fg(Color::Green)),
@@ -703,6 +703,40 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             app.open_filter();
                         } else if app.view == View::Stream {
                             app.open_stream_search();
+                        }
+                    }
+                    KeyCode::Char('n') => {
+                        if app.view == View::Stream {
+                            let needle = app.stream_search.as_bytes();
+                            if !needle.is_empty() {
+                                if let Some(fl) = app.selected_flow() {
+                                    let bytes = build_stream_bytes(&app.rows, fl, app.stream_tab);
+                                    let start = app.stream_last_match.map(|p| p.saturating_add(1)).unwrap_or(0);
+                                    let pos = crate::search::find_next_subslice_from(&bytes, needle, start)
+                                        .or_else(|| crate::search::find_next_subslice_from(&bytes, needle, 0));
+                                    if let Some(pos) = pos {
+                                        app.stream_last_match = Some(pos);
+                                        app.stream_scroll = (pos / 16) as u16;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    KeyCode::Char('N') => {
+                        if app.view == View::Stream {
+                            let needle = app.stream_search.as_bytes();
+                            if !needle.is_empty() {
+                                if let Some(fl) = app.selected_flow() {
+                                    let bytes = build_stream_bytes(&app.rows, fl, app.stream_tab);
+                                    let before = app.stream_last_match.unwrap_or(bytes.len());
+                                    let pos = crate::search::find_prev_subslice_before(&bytes, needle, before)
+                                        .or_else(|| crate::search::find_prev_subslice_before(&bytes, needle, bytes.len()));
+                                    if let Some(pos) = pos {
+                                        app.stream_last_match = Some(pos);
+                                        app.stream_scroll = (pos / 16) as u16;
+                                    }
+                                }
+                            }
                         }
                     }
                     KeyCode::Char('t') => {
