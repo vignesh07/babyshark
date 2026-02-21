@@ -407,6 +407,20 @@ fn scroll_for_match_pos(pos: usize) -> u16 {
     ((pos + (HEXDUMP_COLS - 1)) / HEXDUMP_COLS) as u16
 }
 
+fn byte_in_any_range(abs: usize, ranges: &[(usize, usize)]) -> bool {
+    ranges
+        .binary_search_by(|(s, e)| {
+            if abs < *s {
+                std::cmp::Ordering::Greater
+            } else if abs >= *e {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        })
+        .is_ok()
+}
+
 fn first_match_and_scroll(bytes: &[u8], needle: &[u8]) -> Option<(usize, u16)> {
     if needle.is_empty() {
         return None;
@@ -482,17 +496,7 @@ fn bytes_to_pretty_lines(
             if i < chunk.len() {
                 let abs = offset + i;
                 let in_cur = abs >= cur_start && abs < cur_end;
-                let in_any = match_ranges
-                    .binary_search_by(|(s, e)| {
-                        if abs < *s {
-                            std::cmp::Ordering::Greater
-                        } else if abs >= *e {
-                            std::cmp::Ordering::Less
-                        } else {
-                            std::cmp::Ordering::Equal
-                        }
-                    })
-                    .is_ok();
+                let in_any = byte_in_any_range(abs, match_ranges);
 
                 let st = if in_cur {
                     Style::default()
@@ -527,17 +531,7 @@ fn bytes_to_pretty_lines(
             if i < chunk.len() {
                 let abs = offset + i;
                 let in_cur = abs >= cur_start && abs < cur_end;
-                let in_any = match_ranges
-                    .binary_search_by(|(s, e)| {
-                        if abs < *s {
-                            std::cmp::Ordering::Greater
-                        } else if abs >= *e {
-                            std::cmp::Ordering::Less
-                        } else {
-                            std::cmp::Ordering::Equal
-                        }
-                    })
-                    .is_ok();
+                let in_any = byte_in_any_range(abs, match_ranges);
 
                 let st = if in_cur {
                     Style::default()
