@@ -254,17 +254,15 @@ impl App {
         self.stream_scroll = 0;
 
         // Preserve search context when switching tabs.
-        if self.view == View::Stream {
-            if let Some(fl) = self.selected_flow() {
-                let bytes = build_stream_bytes(&self.rows, fl, self.stream_tab);
-                let needle = self.stream_search.as_bytes();
+        if let Some(fl) = self.selected_flow() {
+            let bytes = build_stream_bytes(&self.rows, fl, self.stream_tab);
+            let needle = self.stream_search.as_bytes();
 
-                self.stream_match_count = self.count_stream_matches(&bytes);
+            self.stream_match_count = self.count_stream_matches(&bytes);
 
-                if let Some((pos, scroll)) = first_match_and_scroll(&bytes, needle) {
-                    self.stream_last_match = Some(pos);
-                    self.stream_scroll = scroll;
-                }
+            if let Some((pos, scroll)) = first_match_and_scroll(&bytes, needle) {
+                self.stream_last_match = Some(pos);
+                self.stream_scroll = scroll;
             }
         }
     }
