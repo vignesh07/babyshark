@@ -555,7 +555,7 @@ fn bytes_to_pretty_lines(
     while offset < bytes.len() {
         let chunk = &bytes[offset..bytes.len().min(offset + HEXDUMP_COLS)];
 
-        let mut spans: Vec<Span> = Vec::new();
+        let mut spans: Vec<Span> = Vec::with_capacity(8 + HEXDUMP_COLS * 4);
         spans.push(Span::styled(
             fmt_hexdump_offset(offset),
             Style::default().fg(c_muted()).add_modifier(Modifier::DIM),
