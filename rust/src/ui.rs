@@ -1149,6 +1149,30 @@ mod tests {
         assert_eq!(a_ascii[0].style, current_style);
         assert_eq!(a_ascii[1].style, any_style);
     }
+
+    #[test]
+    fn stream_next_prev_match_helpers_wrap_and_compute_scroll() {
+        let bytes = b"abxxab";
+        let needle = b"ab";
+
+        // next from the last match wraps back to the first
+        let (pos, scroll) = next_match_and_scroll(bytes, needle, Some(4)).unwrap();
+        assert_eq!(pos, 0);
+        assert_eq!(scroll, 0);
+
+        // prev from the first match wraps to the last
+        let (pos, scroll) = prev_match_and_scroll(bytes, needle, Some(0)).unwrap();
+        assert_eq!(pos, 4);
+        assert_eq!(scroll, 1);
+
+        // Scroll computation: match at offset 32 should land on row 2 (0-indexed) with 16 columns.
+        let mut big = vec![b'x'; 40];
+        big[32] = b'a';
+        big[33] = b'b';
+        let (pos, scroll) = first_match_and_scroll(&big, needle).unwrap();
+        assert_eq!(pos, 32);
+        assert_eq!(scroll, 2);
+    }
 }
 
 fn render_search_modal(
