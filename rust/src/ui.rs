@@ -405,16 +405,33 @@ pub fn run_tui(app: &mut App) -> Result<()> {
     res
 }
 
-fn byte_ascii(b: u8) -> char {
+fn ascii_cell(b: u8) -> &'static str {
     match b {
-        b'\n' => '⏎',
-        b'\t' => '⇥',
+        b'\n' => "⏎",
+        b'\t' => "⇥",
         _ => {
             let c = b as char;
             if c.is_ascii_graphic() || c == ' ' {
-                c
+                // SAFETY: we're returning a string slice for a single ASCII char.
+                // We do this via a small lookup table.
+                static LUT: std::sync::OnceLock<Box<[Box<str>]>> = std::sync::OnceLock::new();
+                let lut = LUT.get_or_init(|| {
+                    (0u16..=255)
+                        .map(|i| {
+                            let b = i as u8;
+                            let c = b as char;
+                            if c.is_ascii_graphic() || c == ' ' {
+                                c.to_string().into_boxed_str()
+                            } else {
+                                ".".to_string().into_boxed_str()
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .into_boxed_slice()
+                });
+                &lut[b as usize]
             } else {
-                '.'
+                "."
             }
         }
     }
@@ -589,7 +606,7 @@ fn bytes_to_pretty_lines(
                         c_muted()
                     })
                 };
-                spans.push(Span::styled(byte_ascii(chunk[i]).to_string(), st));
+                spans.push(Span::styled(ascii_cell(chunk[i]), st));
             } else {
                 spans.push(Span::raw(" "));
             }
