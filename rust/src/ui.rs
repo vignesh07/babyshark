@@ -404,7 +404,7 @@ fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec
                 };
                 spans.push(Span::styled(format!("{:02x}", chunk[i]), st));
             } else {
-                spans.push(Span::styled("  ", Style::default().fg(c_muted())));
+                spans.push(Span::styled("..", Style::default().fg(c_muted())));
             }
         }
 
