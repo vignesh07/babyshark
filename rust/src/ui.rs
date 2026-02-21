@@ -558,6 +558,7 @@ const HEXDUMP_SPLIT: &str = "  ";
 const HEXDUMP_BYTE_SEP: &str = " ";
 // Heuristic: roughly enough spans for offset + hex bytes + separators + ascii + end gutter.
 const HEXDUMP_SPANS_CAP: usize = 8 + HEXDUMP_COLS * 4;
+const UI_SPACER: &str = "  ";
 const STREAM_MATCH_HIGHLIGHT_CAP: usize = 2000;
 
 fn match_cap_suffix(total: usize) -> &'static str {
@@ -790,14 +791,14 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     "babyshark",
                     Style::default().fg(c_accent()).add_modifier(Modifier::BOLD),
                 ),
-                Span::raw("  "),
+                Span::raw(UI_SPACER),
                 Span::styled(title, Style::default().fg(c_text()).add_modifier(Modifier::BOLD)),
-                Span::raw("  "),
+                Span::raw(UI_SPACER),
                 Span::styled(
                     format!("flows:{} packets:{}", app.visible_flow_indices.len(), app.rows.len()),
                     Style::default().fg(c_muted()),
                 ),
-                Span::raw("  "),
+                Span::raw(UI_SPACER),
                 Span::styled(filter_badge, Style::default().fg(c_muted())),
             ]))
             .block(
