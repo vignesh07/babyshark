@@ -925,8 +925,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     } else {
                         crate::search::find_all_subslice_positions(&bytes, needle, STREAM_MATCH_HIGHLIGHT_CAP)
                     };
-                    // match_positions is already capped, but keep the displayed count capped too.
-                    app.stream_match_count = match_positions.len().min(STREAM_MATCH_HIGHLIGHT_CAP);
+                    app.stream_match_count = match_positions.len();
                     let match_ranges: Vec<(usize, usize)> = match_positions
                         .iter()
                         .map(|pos| (*pos, pos.saturating_add(needle.len())))
