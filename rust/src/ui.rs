@@ -238,6 +238,12 @@ impl App {
     }
 
     fn tab_prev(&mut self) {
+        if self.view != View::Stream {
+            self.stream_last_match = None;
+            self.stream_match_count = 0;
+            return;
+        }
+
         self.stream_tab = match self.stream_tab {
             StreamTab::Combined => StreamTab::BtoA,
             StreamTab::AtoB => StreamTab::Combined,
@@ -258,9 +264,6 @@ impl App {
                     self.stream_scroll = scroll;
                 }
             }
-        } else {
-            self.stream_last_match = None;
-            self.stream_match_count = 0;
         }
     }
 
@@ -1649,6 +1652,7 @@ mod tests {
             Vec::new(),
             FlowIndex { flows: Vec::new() },
         );
+        app.view = View::Stream;
         app.stream_tab = StreamTab::Combined;
         app.tab_prev();
         assert!(matches!(app.stream_tab, StreamTab::BtoA));
