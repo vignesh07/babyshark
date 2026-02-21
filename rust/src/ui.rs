@@ -343,39 +343,75 @@ pub fn run_tui(app: &mut App) -> Result<()> {
     res
 }
 
-fn bytes_to_pretty_text(bytes: &[u8]) -> Text<'static> {
+fn byte_ascii(b: u8) -> char {
+    let c = b as char;
+    if c.is_ascii_graphic() || c == ' ' { c } else { '.' }
+}
+
+fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec<Line<'static>> {
     let mut lines: Vec<Line> = Vec::new();
     let mut offset: usize = 0;
+
+    let (hl_start, hl_end) = highlight
+        .map(|(s, len)| (s, s.saturating_add(len)))
+        .unwrap_or((usize::MAX, usize::MAX));
+
     while offset < bytes.len() {
         let chunk = &bytes[offset..bytes.len().min(offset + 16)];
-        let hex = chunk
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect::<Vec<_>>()
-            .join(" ");
-        let ascii = chunk
-            .iter()
-            .map(|b| {
-                let c = *b as char;
-                if c.is_ascii_graphic() || c == ' ' {
-                    c
+
+        let mut spans: Vec<Span> = Vec::new();
+        spans.push(Span::styled(
+            format!("{:08x}  ", offset),
+            Style::default().fg(c_muted()),
+        ));
+
+        // hex bytes (16 * 3 - 1 = 47 chars) padded to width 47
+        for i in 0..16 {
+            if i < chunk.len() {
+                let abs = offset + i;
+                let in_hl = abs >= hl_start && abs < hl_end;
+                let st = if in_hl {
+                    Style::default().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD)
                 } else {
-                    '.'
-                }
-            })
-            .collect::<String>();
-        lines.push(Line::from(vec![
-            Span::styled(format!("{:08x}  ", offset), Style::default().fg(c_muted())),
-            Span::styled(
-                format!("{:<47}", hex),
-                Style::default().fg(Color::Rgb(170, 180, 200)),
-            ),
-            Span::raw("  "),
-            Span::styled(ascii, Style::default().fg(c_text())),
-        ]));
+                    Style::default().fg(Color::Rgb(170, 180, 200))
+                };
+                spans.push(Span::styled(format!("{:02x}", chunk[i]), st));
+            } else {
+                spans.push(Span::styled("  ", Style::default().fg(Color::Rgb(170, 180, 200))));
+            }
+
+            if i != 15 {
+                spans.push(Span::raw(" "));
+            }
+        }
+
+        spans.push(Span::raw("  "));
+
+        // ascii
+        for i in 0..16 {
+            if i < chunk.len() {
+                let abs = offset + i;
+                let in_hl = abs >= hl_start && abs < hl_end;
+                let st = if in_hl {
+                    Style::default().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(c_text())
+                };
+                spans.push(Span::styled(byte_ascii(chunk[i]).to_string(), st));
+            } else {
+                spans.push(Span::raw(" "));
+            }
+        }
+
+        lines.push(Line::from(spans));
         offset += 16;
     }
-    Text::from(lines)
+
+    lines
+}
+
+fn bytes_to_pretty_text(bytes: &[u8], highlight: Option<(usize, usize)>) -> Text<'static> {
+    Text::from(bytes_to_pretty_lines(bytes, highlight))
 }
 
 fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) -> Result<()> {
@@ -546,12 +582,15 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         StreamTab::BtoA => ("B→A", build_stream_bytes(&app.rows, fl, app.stream_tab)),
                     };
 
-                    let text = bytes_to_pretty_text(&bytes);
+                    let highlight = app
+                        .stream_last_match
+                        .map(|pos| (pos, app.stream_search.as_bytes().len()));
+                    let text = bytes_to_pretty_text(&bytes, highlight);
                     let p = Paragraph::new(text)
                         .block(
                             Block::default()
                                 .borders(Borders::ALL)
-                                .title(format!("Stream: {label}  (Tab switch, ↑/↓ scroll, Esc back)"))
+                                .title(format!("Stream: {label}  (Tab switch, / search, n/N next/prev, ↑/↓ scroll, Esc back)"))
                                 .style(Style::default().bg(c_panel())),
                         )
                         .wrap(Wrap { trim: false })
@@ -878,4 +917,31 @@ fn render_modal(
         .wrap(Wrap { trim: true })
         .style(Style::default().bg(c_panel()).fg(c_text()));
     f.render_widget(p, inner);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hexdump_highlights_current_match() {
+        let bytes = b"abcd";
+        let lines = bytes_to_pretty_lines(bytes, Some((1, 2)));
+        assert_eq!(lines.len(), 1);
+
+        let want = Style::default().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD);
+
+        // hex: "62" for 'b' should be highlighted
+        let spans = &lines[0].spans;
+        let hex_b = spans.iter().find(|s| s.content.as_ref() == "62").unwrap();
+        assert_eq!(hex_b.style, want);
+
+        // ascii: "b" should be highlighted
+        let ascii_b = spans.iter().find(|s| s.content.as_ref() == "b").unwrap();
+        assert_eq!(ascii_b.style, want);
+
+        // hex: "61" for 'a' should not be highlighted
+        let hex_a = spans.iter().find(|s| s.content.as_ref() == "61").unwrap();
+        assert_ne!(hex_a.style, want);
+    }
 }
