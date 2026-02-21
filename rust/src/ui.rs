@@ -1656,6 +1656,19 @@ mod tests {
         app.tab_prev();
         assert!(matches!(app.stream_tab, StreamTab::Combined));
     }
+
+    #[test]
+    fn canceling_stream_search_resets_scroll() {
+        let mut app = App::new(
+            "/tmp/nope.pcap",
+            Vec::new(),
+            FlowIndex { flows: Vec::new() },
+        );
+        app.modal = Modal::StreamSearch;
+        app.stream_scroll = 42;
+        app.close_modal_cancel();
+        assert_eq!(app.stream_scroll, 0);
+    }
 }
 
 const STREAM_SEARCH_MODAL_TITLE: &str = "Stream search";
