@@ -1518,6 +1518,13 @@ mod tests {
     fn fmt_hexdump_offset_uses_placeholder_for_huge_offsets() {
         assert_eq!(fmt_hexdump_offset(0x1_0000), HEXDUMP_OFFSET_TOO_LARGE);
     }
+
+    #[test]
+    fn fmt_hexdump_offset_at_lut_max_is_not_placeholder() {
+        let s = fmt_hexdump_offset(HEXDUMP_OFFSET_LUT_MAX);
+        assert_ne!(s, HEXDUMP_OFFSET_TOO_LARGE);
+        assert!(s.starts_with("0x"));
+    }
 }
 
 const STREAM_SEARCH_MODAL_TITLE: &str = "Stream search";
