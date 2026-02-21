@@ -1,3 +1,4 @@
+use anyhow::Result;
 use clap::Parser;
 
 #[derive(Parser, Debug)]
@@ -5,18 +6,16 @@ use clap::Parser;
 struct Args {
     /// Path to a .pcap or .pcapng file
     #[arg(long)]
-    pcap: Option<String>,
+    pcap: String,
 }
 
-fn main() {
+fn main() -> Result<()> {
     let args = Args::parse();
-    if args.pcap.is_none() {
-        eprintln!("usage: babyshark --pcap <file>");
-        std::process::exit(2);
-    }
 
-    println!(
-        "babyshark: opening {} (pcap viewer coming next)",
-        args.pcap.unwrap()
-    );
+    let rows = babyshark::pcap::read_pcap(&args.pcap)?;
+    let flows = babyshark::flow::FlowIndex::build(&rows);
+    let mut app = babyshark::ui::App::new(rows, flows);
+
+    babyshark::ui::run_tui(&mut app)?;
+    Ok(())
 }
