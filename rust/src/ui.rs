@@ -285,6 +285,14 @@ impl App {
         self.modal = Modal::StreamSearch;
         self.stream_last_match = None;
         self.stream_match_count = 0;
+
+        if self.view == View::Stream {
+            if let Some(fl) = self.selected_flow() {
+                let bytes = build_stream_bytes(&self.rows, fl, self.stream_tab);
+                self.stream_match_count = self.count_stream_matches(&bytes);
+            }
+        }
+
         // keep existing search text
     }
 
