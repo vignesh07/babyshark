@@ -262,36 +262,17 @@ impl App {
         std::fs::create_dir_all(&dir)?;
         let out = dir.join("report.md");
 
-        let mut md = String::new();
-        md.push_str("# babyshark report\n\n");
-        md.push_str(&format!("PCAP: `{}`\n\n", self.pcap_path.display()));
-        md.push_str(&format!("Flows (visible): **{}**\n\n", self.visible_flow_indices.len()));
-
-        if !self.casefile.bookmarks.is_empty() {
-            md.push_str("## Bookmarks\n\n");
-            for b in &self.casefile.bookmarks {
-                md.push_str(&format!("- **{}** — {}\n", b.flow_label, b.note));
-            }
-            md.push_str("\n");
-        }
-
-        if let Some(fl) = self.selected_flow() {
-            md.push_str("## Selected flow\n\n");
-            md.push_str(&format!("- {}\n", fl.label()));
-            md.push_str(&format!("- packets: {}\n", fl.total_packets));
-            md.push_str(&format!("- bytes: {}\n\n", fl.total_bytes));
-
-            let s: StreamData = build_stream(&self.rows, fl);
-            md.push_str("### Stream (A→B)\n\n```\n");
-            md.push_str(&String::from_utf8_lossy(&s.a_to_b));
-            md.push_str("\n```\n\n");
-            md.push_str("### Stream (B→A)\n\n```\n");
-            md.push_str(&String::from_utf8_lossy(&s.b_to_a));
-            md.push_str("\n```\n\n");
-        }
-
-        std::fs::write(&out, md)?;
-        Ok(out)
+        let selected = self.selected_flow();
+        crate::report::write_report_md(
+            &out,
+            &self.pcap_path,
+            &self.rows,
+            &self.flows,
+            &self.filter,
+            &self.casefile.bookmarks,
+            selected,
+            crate::report::ReportOptions::default(),
+        )
     }
 }
 
