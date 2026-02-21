@@ -467,8 +467,8 @@ fn fmt_hexdump_offset(offset: usize) -> &'static str {
     if offset <= MAX {
         &lut[offset]
     } else {
-        // Leak a boxed str for rare huge offsets; avoids changing call sites.
-        Box::leak(format!("0x{:>6x}  ", offset).into_boxed_str())
+        // Should be very rare; we keep a placeholder rather than leaking.
+        "0x??????  "
     }
 }
 
