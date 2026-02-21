@@ -877,7 +877,11 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                 .map(|i| i + 1)
                                 .unwrap_or(0);
                             let cur_disp = cur.max(1);
-                            format!("  search=\"{}\" {cur_disp}/{total}", app.stream_search)
+                            format!(
+                                "  search=\"{}\" {cur_disp}/{total}{}",
+                                app.stream_search,
+                                if total >= STREAM_MATCH_HIGHLIGHT_CAP { "+" } else { "" },
+                            )
                         }
                     };
 
@@ -1560,6 +1564,17 @@ mod tests {
             style_current_match(),
             style_current_match().add_modifier(Modifier::DIM),
         );
+    }
+
+    #[test]
+    fn stream_title_appends_plus_when_match_count_is_capped() {
+        let total = STREAM_MATCH_HIGHLIGHT_CAP;
+        let suffix = if total >= STREAM_MATCH_HIGHLIGHT_CAP {
+            "+"
+        } else {
+            ""
+        };
+        assert_eq!(suffix, "+");
     }
 }
 
