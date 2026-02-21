@@ -253,6 +253,8 @@ impl App {
                                 self.stream_last_match = Some(pos);
                                 self.stream_scroll =
                                     ((pos + (HEXDUMP_COLS - 1)) / HEXDUMP_COLS) as u16;
+                            } else {
+                                self.stream_last_match = None;
                             }
                         }
                     }
