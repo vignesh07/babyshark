@@ -188,6 +188,16 @@ impl App {
         self.stream_scroll = 0;
     }
 
+    fn count_stream_matches(&self, bytes: &[u8]) -> usize {
+        let needle = self.stream_search.as_bytes();
+        if needle.is_empty() {
+            0
+        } else {
+            crate::search::find_all_subslice_positions(bytes, needle, STREAM_MATCH_HIGHLIGHT_CAP)
+                .len()
+        }
+    }
+
     fn tab_next(&mut self) {
         self.stream_tab = match self.stream_tab {
             StreamTab::Combined => StreamTab::AtoB,
@@ -203,16 +213,7 @@ impl App {
                 let bytes = build_stream_bytes(&self.rows, fl, self.stream_tab);
                 let needle = self.stream_search.as_bytes();
 
-                self.stream_match_count = if needle.is_empty() {
-                    0
-                } else {
-                    crate::search::find_all_subslice_positions(
-                        &bytes,
-                        needle,
-                        STREAM_MATCH_HIGHLIGHT_CAP,
-                    )
-                    .len()
-                };
+                self.stream_match_count = self.count_stream_matches(&bytes);
 
                 if let Some((pos, scroll)) = first_match_and_scroll(&bytes, needle) {
                     self.stream_last_match = Some(pos);
@@ -282,16 +283,7 @@ impl App {
                         let bytes = build_stream_bytes(&self.rows, fl, self.stream_tab);
                         let needle = self.stream_search.as_bytes();
 
-                        self.stream_match_count = if needle.is_empty() {
-                            0
-                        } else {
-                            crate::search::find_all_subslice_positions(
-                                &bytes,
-                                needle,
-                                STREAM_MATCH_HIGHLIGHT_CAP,
-                            )
-                            .len()
-                        };
+                        self.stream_match_count = self.count_stream_matches(&bytes);
 
                         if let Some((pos, scroll)) = first_match_and_scroll(&bytes, needle) {
                             self.stream_last_match = Some(pos);
