@@ -748,7 +748,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     let match_positions: Vec<usize> = if needle.is_empty() {
                         Vec::new()
                     } else {
-                        crate::search::find_all_subslice_positions(&bytes, needle, 200)
+                        crate::search::find_all_subslice_positions(&bytes, needle, 2000)
                     };
                     let mut match_ranges: Vec<(usize, usize)> = match_positions
                         .iter()
@@ -1261,6 +1261,19 @@ mod tests {
         assert_eq!(a_hex_sorted.len(), 2);
         let highlighted_sorted = a_hex_sorted.iter().filter(|s| s.style == any_style).count();
         assert_eq!(highlighted_sorted, 2);
+    }
+
+    #[test]
+    fn highlight_all_matches_cap_increases_match_ranges() {
+        // With a small cap, we should collect fewer matches than exist.
+        let bytes = b"ab".repeat(300);
+        let needle = b"ab";
+
+        let small = crate::search::find_all_subslice_positions(&bytes, needle, 200);
+        let big = crate::search::find_all_subslice_positions(&bytes, needle, 2000);
+
+        assert_eq!(small.len(), 200);
+        assert_eq!(big.len(), 300);
     }
 }
 
