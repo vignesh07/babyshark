@@ -466,6 +466,7 @@ fn hex_byte_upper(b: u8) -> &'static str {
 const HEXDUMP_COLS: usize = 16;
 const HEXDUMP_GROUP: usize = HEXDUMP_COLS / 2;
 const HEXDUMP_GUTTER: &str = "  | ";
+const HEXDUMP_SPLIT: &str = "  ";
 const STREAM_MATCH_HIGHLIGHT_CAP: usize = 2000;
 
 fn match_ordinal(match_positions: &[usize], current: Option<usize>) -> Option<usize> {
@@ -558,7 +559,7 @@ fn bytes_to_pretty_lines(
         // hex bytes with spacing and a mid-group separator for readability
         for i in 0..HEXDUMP_COLS {
             if i == HEXDUMP_GROUP {
-                spans.push(Span::raw("  "));
+                spans.push(Span::raw(HEXDUMP_SPLIT));
             } else if i != 0 {
                 spans.push(Span::raw(" "));
             }
