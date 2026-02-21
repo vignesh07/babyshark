@@ -10,9 +10,14 @@ ratatui = "0.29"
 crossterm = "0.28"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+etherparse = "0.14"
+ipnet = "2"
+pcap-file = "2"
 
 [dev-dependencies]
 insta = "1"
+tempfile = "3"
 
 [lib]
 path = "src/lib.rs"
