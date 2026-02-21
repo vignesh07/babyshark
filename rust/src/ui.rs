@@ -558,6 +558,7 @@ const HEXDUMP_SPLIT: &str = "  ";
 const HEXDUMP_BYTE_SEP: &str = " ";
 // Heuristic: roughly enough spans for offset + hex bytes + separators + ascii + end gutter.
 const HEXDUMP_SPANS_CAP: usize = 8 + HEXDUMP_COLS * 4;
+const UI_ONE_SPACE: &str = " ";
 const UI_SPACER: &str = "  ";
 const STREAM_MATCH_HIGHLIGHT_CAP: usize = 2000;
 
@@ -884,7 +885,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             };
                             let line = Line::from(vec![
                                 Span::styled(dir, Style::default().fg(c_accent())),
-                                Span::raw(" "),
+                                Span::raw(UI_ONE_SPACE),
                                 Span::styled(format!("#{:<4} ", r.index), Style::default().fg(c_muted())),
                                 Span::styled(
                                     format!("{:>4}B ", r.len),
