@@ -403,12 +403,16 @@ fn match_ordinal(match_positions: &[usize], current: Option<usize>) -> Option<us
     match_positions.iter().position(|p| *p == cur)
 }
 
+fn scroll_for_match_pos(pos: usize) -> u16 {
+    ((pos + (HEXDUMP_COLS - 1)) / HEXDUMP_COLS) as u16
+}
+
 fn first_match_and_scroll(bytes: &[u8], needle: &[u8]) -> Option<(usize, u16)> {
     if needle.is_empty() {
         return None;
     }
     let pos = crate::search::find_subslice(bytes, needle)?;
-    let scroll = ((pos + (HEXDUMP_COLS - 1)) / HEXDUMP_COLS) as u16;
+    let scroll = scroll_for_match_pos(pos);
     Some((pos, scroll))
 }
 
@@ -425,7 +429,7 @@ fn next_match_and_scroll(
     let pos = crate::search::find_next_subslice_from(bytes, needle, start)
         .or_else(|| crate::search::find_next_subslice_from(bytes, needle, 0))?;
 
-    let scroll = ((pos + (HEXDUMP_COLS - 1)) / HEXDUMP_COLS) as u16;
+    let scroll = scroll_for_match_pos(pos);
     Some((pos, scroll))
 }
 
@@ -442,7 +446,7 @@ fn prev_match_and_scroll(
     let pos = crate::search::find_prev_subslice_before(bytes, needle, before)
         .or_else(|| crate::search::find_prev_subslice_before(bytes, needle, bytes.len()))?;
 
-    let scroll = ((pos + (HEXDUMP_COLS - 1)) / HEXDUMP_COLS) as u16;
+    let scroll = scroll_for_match_pos(pos);
     Some((pos, scroll))
 }
 
