@@ -552,7 +552,7 @@ fn bytes_to_pretty_lines(
     match_ranges: &[(usize, usize)],
     current_match: Option<(usize, usize)>,
 ) -> Vec<Line<'static>> {
-    let mut lines: Vec<Line> = Vec::new();
+    let mut lines: Vec<Line> = Vec::with_capacity((bytes.len() + HEXDUMP_COLS - 1) / HEXDUMP_COLS);
     let mut offset: usize = 0;
 
     let (cur_start, cur_end) = current_match
