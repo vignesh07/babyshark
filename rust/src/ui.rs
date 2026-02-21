@@ -56,6 +56,7 @@ pub enum Modal {
     None,
     Filter,
     Bookmark,
+    StreamSearch,
 }
 
 pub struct App {
@@ -82,6 +83,10 @@ pub struct App {
     // stream view state
     pub stream_tab: StreamTab,
     pub stream_scroll: u16,
+
+    // stream search
+    pub stream_search: String,
+    pub stream_last_match: Option<usize>,
 }
 
 impl App {
@@ -102,6 +107,8 @@ impl App {
             modal: Modal::None,
             stream_tab: StreamTab::Combined,
             stream_scroll: 0,
+            stream_search: String::new(),
+            stream_last_match: None,
         };
         app.recompute_visible();
         app
@@ -196,6 +203,11 @@ impl App {
         self.bookmark_note.clear();
     }
 
+    fn open_stream_search(&mut self) {
+        self.modal = Modal::StreamSearch;
+        // keep existing search text
+    }
+
     fn close_modal_apply(&mut self) {
         match self.modal {
             Modal::Filter => {
@@ -207,6 +219,31 @@ impl App {
                     self.casefile
                         .upsert_bookmark(&key, &key, self.bookmark_note.trim());
                     let _ = self.casefile.save(&self.pcap_path);
+                }
+            }
+            Modal::StreamSearch => {
+                self.stream_last_match = None;
+                if self.view == View::Stream {
+                    if let Some(fl) = self.selected_flow() {
+                        let stream = crate::stream::build_stream(&self.rows, fl);
+                        let bytes = match self.stream_tab {
+                            StreamTab::Combined => {
+                                let mut c = stream.a_to_b.clone();
+                                c.extend_from_slice(b"\n\n---\n\n");
+                                c.extend_from_slice(&stream.b_to_a);
+                                c
+                            }
+                            StreamTab::AtoB => stream.a_to_b,
+                            StreamTab::BtoA => stream.b_to_a,
+                        };
+                        let needle = self.stream_search.as_bytes();
+                        if !needle.is_empty() {
+                            if let Some(pos) = crate::search::find_subslice(&bytes, needle) {
+                                self.stream_last_match = Some(pos);
+                                self.stream_scroll = (pos / 16) as u16;
+                            }
+                        }
+                    }
                 }
             }
             Modal::None => {}
@@ -227,6 +264,9 @@ impl App {
             Modal::Bookmark => {
                 self.bookmark_note.push(c);
             }
+            Modal::StreamSearch => {
+                self.stream_search.push(c);
+            }
             Modal::None => {}
         }
     }
@@ -240,6 +280,9 @@ impl App {
             Modal::Bookmark => {
                 self.bookmark_note.pop();
             }
+            Modal::StreamSearch => {
+                self.stream_search.pop();
+            }
             Modal::None => {}
         }
     }
@@ -252,6 +295,9 @@ impl App {
             }
             Modal::Bookmark => {
                 self.bookmark_note.clear();
+            }
+            Modal::StreamSearch => {
+                self.stream_search.clear();
             }
             Modal::None => {}
         }
@@ -558,6 +604,11 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     Span::raw("  "),
                     Span::styled("type note, Enter save, Esc cancel, Ctrl+u clear", Style::default().fg(c_muted())),
                 ]),
+                Modal::StreamSearch => Line::from(vec![
+                    Span::styled("SEARCH", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
+                    Span::raw("  "),
+                    Span::styled("type query, Enter apply, Esc cancel, Ctrl+u clear", Style::default().fg(c_muted())),
+                ]),
                 Modal::None => match app.view {
                     View::Flows => Line::from(vec![
                         Span::styled("↑/↓", Style::default().fg(Color::Green)),
@@ -584,6 +635,8 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         Span::raw(" quit"),
                     ]),
                     View::Stream => Line::from(vec![
+                        Span::styled("/", Style::default().fg(Color::Green)),
+                        Span::raw(" search  "),
                         Span::styled("Tab", Style::default().fg(Color::Green)),
                         Span::raw(" switch  "),
                         Span::styled("↑/↓", Style::default().fg(Color::Green)),
@@ -607,6 +660,9 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                 }
                 Modal::Bookmark => {
                     render_modal(f, size, "Bookmark note", &app.bookmark_note, app.filter.show_tcp, app.filter.show_udp);
+                }
+                Modal::StreamSearch => {
+                    render_modal(f, size, "Stream search", &app.stream_search, app.filter.show_tcp, app.filter.show_udp);
                 }
                 Modal::None => {}
             }
@@ -645,6 +701,8 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     KeyCode::Char('/') => {
                         if app.view == View::Flows {
                             app.open_filter();
+                        } else if app.view == View::Stream {
+                            app.open_stream_search();
                         }
                     }
                     KeyCode::Char('t') => {
