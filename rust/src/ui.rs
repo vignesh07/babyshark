@@ -470,6 +470,7 @@ fn hex_byte_upper(b: u8) -> &'static str {
 const HEXDUMP_COLS: usize = 16;
 const HEXDUMP_GROUP: usize = HEXDUMP_COLS / 2;
 const HEXDUMP_GUTTER: &str = "  | ";
+const HEXDUMP_GUTTER_END: &str = " |";
 const HEXDUMP_SPLIT: &str = "  ";
 const STREAM_MATCH_HIGHLIGHT_CAP: usize = 2000;
 
@@ -626,7 +627,7 @@ fn bytes_to_pretty_lines(
         }
 
         spans.push(Span::styled(
-            "|",
+            HEXDUMP_GUTTER_END,
             Style::default().fg(c_muted()).add_modifier(Modifier::DIM),
         ));
 
