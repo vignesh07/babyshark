@@ -1577,12 +1577,7 @@ mod tests {
     #[test]
     fn stream_title_appends_plus_when_match_count_is_capped() {
         let total = STREAM_MATCH_HIGHLIGHT_CAP;
-        let suffix = if total >= STREAM_MATCH_HIGHLIGHT_CAP {
-            "+"
-        } else {
-            ""
-        };
-        assert_eq!(suffix, "+");
+        assert_eq!(match_cap_suffix(total), "+");
     }
 }
 
