@@ -1734,6 +1734,24 @@ mod tests {
         app.open_stream_search();
         assert_eq!(app.stream_scroll, 0);
     }
+
+    #[test]
+    fn typing_in_stream_search_resets_scroll_and_clears_current_match() {
+        let mut app = App::new(
+            "/tmp/nope.pcap",
+            Vec::new(),
+            FlowIndex { flows: Vec::new() },
+        );
+        app.modal = Modal::StreamSearch;
+        app.view = View::Stream;
+        app.stream_scroll = 5;
+        app.stream_last_match = Some(123);
+
+        app.modal_push('a');
+
+        assert_eq!(app.stream_scroll, 0);
+        assert_eq!(app.stream_last_match, None);
+    }
 }
 
 const STREAM_SEARCH_MODAL_TITLE: &str = "Stream search";
