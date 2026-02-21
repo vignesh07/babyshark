@@ -104,8 +104,6 @@ pub struct App {
     // stream search
     pub stream_search: String,
     pub stream_last_match: Option<usize>,
-    pub stream_last_search_bytes_len: usize,
-    pub stream_last_search_match_count: usize,
     pub stream_match_count: usize,
 }
 
@@ -129,8 +127,6 @@ impl App {
             stream_scroll: 0,
             stream_search: String::new(),
             stream_last_match: None,
-            stream_last_search_bytes_len: 0,
-            stream_last_search_match_count: 0,
             stream_match_count: 0,
         };
         app.recompute_visible();
@@ -181,8 +177,6 @@ impl App {
         self.stream_scroll = 0;
         self.stream_last_match = None;
         self.stream_match_count = 0;
-        self.stream_last_search_bytes_len = 0;
-        self.stream_last_search_match_count = 0;
     }
 
     fn back(&mut self) {
@@ -219,8 +213,6 @@ impl App {
                     )
                     .len()
                 };
-                self.stream_last_search_bytes_len = bytes.len();
-                self.stream_last_search_match_count = self.stream_match_count;
 
                 if let Some((pos, scroll)) = first_match_and_scroll(&bytes, needle) {
                     self.stream_last_match = Some(pos);
@@ -230,8 +222,6 @@ impl App {
         } else {
             self.stream_last_match = None;
             self.stream_match_count = 0;
-            self.stream_last_search_bytes_len = 0;
-            self.stream_last_search_match_count = 0;
         }
     }
 
@@ -266,8 +256,6 @@ impl App {
         self.modal = Modal::StreamSearch;
         self.stream_last_match = None;
         self.stream_match_count = 0;
-        self.stream_last_search_bytes_len = 0;
-        self.stream_last_search_match_count = 0;
         // keep existing search text
     }
 
@@ -304,8 +292,6 @@ impl App {
                             )
                             .len()
                         };
-                        self.stream_last_search_bytes_len = bytes.len();
-                        self.stream_last_search_match_count = self.stream_match_count;
 
                         if let Some((pos, scroll)) = first_match_and_scroll(&bytes, needle) {
                             self.stream_last_match = Some(pos);
@@ -323,8 +309,6 @@ impl App {
         if self.modal == Modal::StreamSearch {
             self.stream_last_match = None;
             self.stream_match_count = 0;
-            self.stream_last_search_bytes_len = 0;
-            self.stream_last_search_match_count = 0;
         }
         self.modal = Modal::None;
     }
@@ -374,8 +358,6 @@ impl App {
                 self.stream_search.clear();
                 self.stream_last_match = None;
                 self.stream_match_count = 0;
-                self.stream_last_search_bytes_len = 0;
-                self.stream_last_search_match_count = 0;
             }
             Modal::None => {}
         }
@@ -832,8 +814,6 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         crate::search::find_all_subslice_positions(&bytes, needle, STREAM_MATCH_HIGHLIGHT_CAP)
                     };
                     app.stream_match_count = match_positions.len();
-                    app.stream_last_search_bytes_len = bytes.len();
-                    app.stream_last_search_match_count = app.stream_match_count;
                     let mut match_ranges: Vec<(usize, usize)> = match_positions
                         .iter()
                         .map(|pos| (*pos, pos.saturating_add(needle.len())))
