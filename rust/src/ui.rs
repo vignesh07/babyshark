@@ -915,6 +915,14 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                 format!("{:>4}B ", r.len),
                                 Style::default().fg(Color::Rgb(190, 200, 220)),
                             ),
+                            Span::styled(
+                                r.tcp_flags
+                                    .map(crate::pcap::tcp_flags_to_string)
+                                    .filter(|s| !s.is_empty())
+                                    .map(|s| format!("[{s}] "))
+                                    .unwrap_or_default(),
+                                Style::default().fg(Color::Rgb(180, 190, 210)),
+                            ),
                             Span::styled(r.summary.clone(), Style::default().fg(c_text())),
                         ]);
 

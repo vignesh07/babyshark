@@ -241,7 +241,7 @@ fn decode_packet(index: usize, ts: DateTime<Utc>, data: &[u8]) -> PacketRow {
     row
 }
 
-fn tcp_flags_to_string(mask: u16) -> String {
+pub fn tcp_flags_to_string(mask: u16) -> String {
     let mut parts: Vec<&'static str> = Vec::new();
     // Order chosen to produce the common "SYN,ACK" / "FIN,ACK" style.
     if (mask & 0x100) != 0 {
