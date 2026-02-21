@@ -389,11 +389,15 @@ fn byte_is_printable(b: u8) -> bool {
 
 const HEXDUMP_COLS: usize = 16;
 
-fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec<Line<'static>> {
+fn bytes_to_pretty_lines(
+    bytes: &[u8],
+    match_ranges: &[(usize, usize)],
+    current_match: Option<(usize, usize)>,
+) -> Vec<Line<'static>> {
     let mut lines: Vec<Line> = Vec::new();
     let mut offset: usize = 0;
 
-    let (hl_start, hl_end) = highlight
+    let (cur_start, cur_end) = current_match
         .map(|(s, len)| (s, s.saturating_add(len)))
         .unwrap_or((usize::MAX, usize::MAX));
 
@@ -416,15 +420,23 @@ fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec
 
             if i < chunk.len() {
                 let abs = offset + i;
-                let in_hl = abs >= hl_start && abs < hl_end;
-                let st = if in_hl {
+                let in_cur = abs >= cur_start && abs < cur_end;
+                let in_any = match_ranges.iter().any(|(s, e)| abs >= *s && abs < *e);
+
+                let st = if in_cur {
                     Style::default()
                         .fg(Color::Black)
                         .bg(c_accent())
                         .add_modifier(Modifier::BOLD)
+                } else if in_any {
+                    Style::default()
+                        .fg(c_text())
+                        .bg(c_highlight_bg())
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(c_muted())
                 };
+
                 spans.push(Span::styled(format!("{:02X}", chunk[i]), st));
             } else {
                 spans.push(Span::styled(
@@ -434,17 +446,27 @@ fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec
             }
         }
 
-        spans.push(Span::styled("  | ", Style::default().fg(c_muted()).add_modifier(Modifier::DIM)));
+        spans.push(Span::styled(
+            "  | ",
+            Style::default().fg(c_muted()).add_modifier(Modifier::DIM),
+        ));
 
         // ascii
         for i in 0..HEXDUMP_COLS {
             if i < chunk.len() {
                 let abs = offset + i;
-                let in_hl = abs >= hl_start && abs < hl_end;
-                let st = if in_hl {
+                let in_cur = abs >= cur_start && abs < cur_end;
+                let in_any = match_ranges.iter().any(|(s, e)| abs >= *s && abs < *e);
+
+                let st = if in_cur {
                     Style::default()
                         .fg(Color::Black)
                         .bg(c_accent())
+                        .add_modifier(Modifier::BOLD)
+                } else if in_any {
+                    Style::default()
+                        .fg(c_text())
+                        .bg(c_highlight_bg())
                         .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(if byte_is_printable(chunk[i]) {
@@ -459,7 +481,10 @@ fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec
             }
         }
 
-        spans.push(Span::styled("|", Style::default().fg(c_muted()).add_modifier(Modifier::DIM)));
+        spans.push(Span::styled(
+            "|",
+            Style::default().fg(c_muted()).add_modifier(Modifier::DIM),
+        ));
 
         lines.push(Line::from(spans));
         offset += HEXDUMP_COLS;
@@ -468,8 +493,12 @@ fn bytes_to_pretty_lines(bytes: &[u8], highlight: Option<(usize, usize)>) -> Vec
     lines
 }
 
-fn bytes_to_pretty_text(bytes: &[u8], highlight: Option<(usize, usize)>) -> Text<'static> {
-    Text::from(bytes_to_pretty_lines(bytes, highlight))
+fn bytes_to_pretty_text(
+    bytes: &[u8],
+    match_ranges: &[(usize, usize)],
+    current_match: Option<(usize, usize)>,
+) -> Text<'static> {
+    Text::from(bytes_to_pretty_lines(bytes, match_ranges, current_match))
 }
 
 fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) -> Result<()> {
@@ -640,10 +669,19 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         StreamTab::BtoA => ("B→A", build_stream_bytes(&app.rows, fl, app.stream_tab)),
                     };
 
-                    let highlight = app
-                        .stream_last_match
-                        .map(|pos| (pos, app.stream_search.as_bytes().len()));
-                    let text = bytes_to_pretty_text(&bytes, highlight);
+                    let needle = app.stream_search.as_bytes();
+                    let match_ranges: Vec<(usize, usize)> = if needle.is_empty() {
+                        Vec::new()
+                    } else {
+                        crate::search::find_all_subslice_positions(&bytes, needle, 200)
+                            .into_iter()
+                            .map(|pos| (pos, pos.saturating_add(needle.len())))
+                            .collect()
+                    };
+
+                    let current = app.stream_last_match.map(|pos| (pos, needle.len()));
+
+                    let text = bytes_to_pretty_text(&bytes, &match_ranges, current);
                     let p = Paragraph::new(text)
                         .block(
                             Block::default()
@@ -1015,7 +1053,7 @@ mod tests {
     #[test]
     fn hexdump_highlights_current_match() {
         let bytes = b"abcd";
-        let lines = bytes_to_pretty_lines(bytes, Some((1, 2)));
+        let lines = bytes_to_pretty_lines(bytes, &[], Some((1, 2)));
         assert_eq!(lines.len(), 1);
 
         let want = Style::default()
@@ -1040,7 +1078,7 @@ mod tests {
     #[test]
     fn hexdump_uses_space_padding_for_short_final_line() {
         let bytes = b"a";
-        let lines = bytes_to_pretty_lines(bytes, None);
+        let lines = bytes_to_pretty_lines(bytes, &[], None);
         assert_eq!(lines.len(), 1);
 
         // We intentionally render missing bytes as two spaces (not "..")
@@ -1048,6 +1086,39 @@ mod tests {
         let spans = &lines[0].spans;
         assert!(spans.iter().any(|s| s.content.as_ref() == "  "));
         assert!(!spans.iter().any(|s| s.content.as_ref() == ".."));
+    }
+
+    #[test]
+    fn hexdump_highlights_all_matches_and_distinguishes_current() {
+        let bytes = b"abxxab";
+
+        // Both occurrences of "ab" should be highlighted; the first is the current match.
+        let ranges = vec![(0usize, 2usize), (4usize, 6usize)];
+        let lines = bytes_to_pretty_lines(bytes, &ranges, Some((0, 2)));
+        assert_eq!(lines.len(), 1);
+
+        let current_style = Style::default()
+            .fg(Color::Black)
+            .bg(c_accent())
+            .add_modifier(Modifier::BOLD);
+        let any_style = Style::default()
+            .fg(c_text())
+            .bg(c_highlight_bg())
+            .add_modifier(Modifier::BOLD);
+
+        let spans = &lines[0].spans;
+
+        // There are two '61' (hex for 'a') spans, one per occurrence.
+        let a_hex: Vec<_> = spans.iter().filter(|s| s.content.as_ref() == "61").collect();
+        assert_eq!(a_hex.len(), 2);
+        assert_eq!(a_hex[0].style, current_style);
+        assert_eq!(a_hex[1].style, any_style);
+
+        // ASCII 'a' also appears twice and should follow the same styles.
+        let a_ascii: Vec<_> = spans.iter().filter(|s| s.content.as_ref() == "a").collect();
+        assert_eq!(a_ascii.len(), 2);
+        assert_eq!(a_ascii[0].style, current_style);
+        assert_eq!(a_ascii[1].style, any_style);
     }
 }
 
