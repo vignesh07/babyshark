@@ -317,13 +317,17 @@ impl App {
             Modal::None => {}
         }
     }
-
     fn export_report(&mut self) -> Result<PathBuf> {
         let dir = crate::casefile::case_dir_for_pcap(&self.pcap_path);
         std::fs::create_dir_all(&dir)?;
-        let out = dir.join("report.md");
+
+        let out_latest = dir.join("report.md");
+        let ts = Local::now().format("%Y%m%d-%H%M%S").to_string();
+        let out_versioned = dir.join(format!("report-{ts}.md"));
 
         let selected = self.selected_flow();
+
+        // Write latest
         crate::report::write_report_md(
             &out_latest,
             &self.pcap_path,
@@ -334,6 +338,8 @@ impl App {
             selected,
             crate::report::ReportOptions::default(),
         )?;
+
+        // Write versioned
         crate::report::write_report_md(
             &out_versioned,
             &self.pcap_path,
@@ -345,6 +351,7 @@ impl App {
             crate::report::ReportOptions::default(),
         )
     }
+
 }
 
 pub fn run_tui(app: &mut App) -> Result<()> {
