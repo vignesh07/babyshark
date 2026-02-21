@@ -478,7 +478,17 @@ fn bytes_to_pretty_lines(
             if i < chunk.len() {
                 let abs = offset + i;
                 let in_cur = abs >= cur_start && abs < cur_end;
-                let in_any = match_ranges.iter().any(|(s, e)| abs >= *s && abs < *e);
+                let in_any = match_ranges
+                    .binary_search_by(|(s, e)| {
+                        if abs < *s {
+                            std::cmp::Ordering::Greater
+                        } else if abs >= *e {
+                            std::cmp::Ordering::Less
+                        } else {
+                            std::cmp::Ordering::Equal
+                        }
+                    })
+                    .is_ok();
 
                 let st = if in_cur {
                     Style::default()
@@ -513,7 +523,17 @@ fn bytes_to_pretty_lines(
             if i < chunk.len() {
                 let abs = offset + i;
                 let in_cur = abs >= cur_start && abs < cur_end;
-                let in_any = match_ranges.iter().any(|(s, e)| abs >= *s && abs < *e);
+                let in_any = match_ranges
+                    .binary_search_by(|(s, e)| {
+                        if abs < *s {
+                            std::cmp::Ordering::Greater
+                        } else if abs >= *e {
+                            std::cmp::Ordering::Less
+                        } else {
+                            std::cmp::Ordering::Equal
+                        }
+                    })
+                    .is_ok();
 
                 let st = if in_cur {
                     Style::default()
@@ -732,10 +752,11 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     } else {
                         crate::search::find_all_subslice_positions(&bytes, needle, 200)
                     };
-                    let match_ranges: Vec<(usize, usize)> = match_positions
+                    let mut match_ranges: Vec<(usize, usize)> = match_positions
                         .iter()
                         .map(|pos| (*pos, pos.saturating_add(needle.len())))
                         .collect();
+                    match_ranges.sort_unstable();
 
                     let current = app.stream_last_match.map(|pos| (pos, needle.len()));
 
@@ -1202,6 +1223,46 @@ mod tests {
         assert_eq!(match_ordinal(&positions, Some(10)), Some(2));
         assert_eq!(match_ordinal(&positions, Some(1)), None);
         assert_eq!(match_ordinal(&positions, None), None);
+    }
+
+    #[test]
+    fn highlight_lookup_binary_search_requires_sorted_ranges() {
+        // If match ranges are not sorted, the binary_search-based lookup in bytes_to_pretty_lines
+        // will miss some highlights. This test documents the requirement.
+        let bytes = b"abxxab";
+        let ranges_unsorted = vec![(4usize, 6usize), (0usize, 2usize)];
+
+        let any_style = Style::default()
+            .fg(c_text())
+            .bg(c_highlight_bg())
+            .add_modifier(Modifier::BOLD);
+
+        // Unsorted: only one of the two occurrences is likely to be highlighted.
+        let line_unsorted = bytes_to_pretty_lines(bytes, &ranges_unsorted, None);
+        let a_hex_unsorted: Vec<_> = line_unsorted[0]
+            .spans
+            .iter()
+            .filter(|s| s.content.as_ref() == "61")
+            .collect();
+        assert_eq!(a_hex_unsorted.len(), 2);
+        let highlighted_unsorted = a_hex_unsorted
+            .iter()
+            .filter(|s| s.style == any_style)
+            .count();
+        assert_eq!(highlighted_unsorted, 1);
+
+        // Sorted: both occurrences should be highlighted.
+        let mut ranges_sorted = ranges_unsorted.clone();
+        ranges_sorted.sort_unstable();
+        let line_sorted = bytes_to_pretty_lines(bytes, &ranges_sorted, None);
+        let a_hex_sorted: Vec<_> = line_sorted[0]
+            .spans
+            .iter()
+            .filter(|s| s.content.as_ref() == "61")
+            .collect();
+        assert_eq!(a_hex_sorted.len(), 2);
+        let highlighted_sorted = a_hex_sorted.iter().filter(|s| s.style == any_style).count();
+        assert_eq!(highlighted_sorted, 2);
     }
 }
 
