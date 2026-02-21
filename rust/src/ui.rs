@@ -1418,6 +1418,11 @@ mod tests {
         assert_eq!(s.len(), 10);
         assert!(s.contains("0"));
     }
+
+    #[test]
+    fn match_styles_distinguish_current_from_other_matches() {
+        assert_ne!(style_current_match(), style_any_match());
+    }
 }
 
 fn render_search_modal(
