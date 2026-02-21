@@ -1482,8 +1482,14 @@ mod tests {
     fn search_modal_uses_plural_no_matches_wording() {
         assert_eq!(STREAM_SEARCH_STATUS_NO_MATCHES, "no matches");
     }
+
+    #[test]
+    fn search_modal_status_type_to_search_is_stable() {
+        assert_eq!(STREAM_SEARCH_STATUS_TYPE_TO_SEARCH, "type to search");
+    }
 }
 
+const STREAM_SEARCH_STATUS_TYPE_TO_SEARCH: &str = "type to search";
 const STREAM_SEARCH_STATUS_MATCH_FOUND: &str = "match found (n/N to navigate)";
 const STREAM_SEARCH_STATUS_NO_MATCHES: &str = "no matches";
 
@@ -1510,7 +1516,7 @@ fn render_search_modal(
     let q = if input.is_empty() { "(empty)" } else { input };
 
     let status = if input.is_empty() {
-        "type to search"
+        STREAM_SEARCH_STATUS_TYPE_TO_SEARCH
     } else if has_match {
         STREAM_SEARCH_STATUS_MATCH_FOUND
     } else {
