@@ -555,7 +555,6 @@ const HEXDUMP_GROUP: usize = HEXDUMP_COLS / 2;
 const HEXDUMP_GUTTER: &str = "  | ";
 const HEXDUMP_GUTTER_END: &str = " |";
 const HEXDUMP_SPLIT: &str = "  ";
-const HEXDUMP_BYTE_SEP: &str = " ";
 // Heuristic: roughly enough spans for offset + hex bytes + separators + ascii + end gutter.
 const HEXDUMP_SPANS_CAP: usize = 8 + HEXDUMP_COLS * 4;
 const UI_ONE_SPACE: &str = " ";
@@ -677,7 +676,7 @@ fn bytes_to_pretty_lines(
             if i == HEXDUMP_GROUP {
                 spans.push(Span::raw(HEXDUMP_SPLIT));
             } else if i != 0 {
-                spans.push(Span::raw(HEXDUMP_BYTE_SEP));
+                spans.push(Span::raw(UI_ONE_SPACE));
             }
 
             if i < chunk.len() {
@@ -727,7 +726,7 @@ fn bytes_to_pretty_lines(
                 };
                 spans.push(Span::styled(ascii_cell(chunk[i]), st));
             } else {
-                spans.push(Span::raw(HEXDUMP_BYTE_SEP));
+                spans.push(Span::raw(UI_ONE_SPACE));
             }
         }
 
