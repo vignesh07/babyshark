@@ -113,6 +113,10 @@ mod tests {
             find_all_subslice_positions(b"abc", b"z", 10),
             Vec::<usize>::new()
         );
+        assert_eq!(
+            find_all_subslice_positions(b"aaaa", b"aa", 0),
+            Vec::<usize>::new()
+        );
         assert_eq!(find_all_subslice_positions(b"aaaa", b"aa", 2), vec![0, 1]);
     }
 }
