@@ -406,35 +406,31 @@ pub fn run_tui(app: &mut App) -> Result<()> {
 }
 
 fn ascii_cell(b: u8) -> &'static str {
-    match b {
-        b'\n' => "⏎",
-        b'\t' => "⇥",
-        _ => {
-            let c = b as char;
-            if c.is_ascii_graphic() || c == ' ' {
-                // SAFETY: we're returning a string slice for a single ASCII char.
-                // We do this via a small lookup table.
-                static LUT: std::sync::OnceLock<Box<[Box<str>]>> = std::sync::OnceLock::new();
-                let lut = LUT.get_or_init(|| {
-                    (0u16..=255)
-                        .map(|i| {
-                            let b = i as u8;
-                            let c = b as char;
-                            if c.is_ascii_graphic() || c == ' ' {
-                                c.to_string().into_boxed_str()
-                            } else {
-                                ".".to_string().into_boxed_str()
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                        .into_boxed_slice()
-                });
-                &lut[b as usize]
-            } else {
-                "."
-            }
-        }
-    }
+    use std::sync::OnceLock;
+
+    static LUT: OnceLock<Box<[Box<str>]>> = OnceLock::new();
+    let lut = LUT.get_or_init(|| {
+        (0u16..=255)
+            .map(|i| {
+                let b = i as u8;
+                match b {
+                    b'\n' => "⏎".to_string().into_boxed_str(),
+                    b'\t' => "⇥".to_string().into_boxed_str(),
+                    _ => {
+                        let c = b as char;
+                        if c.is_ascii_graphic() || c == ' ' {
+                            c.to_string().into_boxed_str()
+                        } else {
+                            ".".to_string().into_boxed_str()
+                        }
+                    }
+                }
+            })
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
+    });
+
+    &lut[b as usize]
 }
 
 fn byte_is_printable(b: u8) -> bool {
