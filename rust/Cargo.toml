@@ -1,0 +1,18 @@
+[package]
+name = "babyshark"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Flows-first PCAP TUI (case files, gorgeous UX)."
+
+[dependencies]
+ratatui = "0.29"
+crossterm = "0.28"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+insta = "1"
+
+[lib]
+path = "src/lib.rs"

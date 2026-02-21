@@ -10,5 +10,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
-      - run: go test ./...
-      - run: go vet ./...
+      - name: Go tests
+        run: |
+          go test ./...
+          go vet ./...
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust tests
+        run: |
+          cargo test --manifest-path rust/Cargo.toml
