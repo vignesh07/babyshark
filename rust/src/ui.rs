@@ -449,12 +449,15 @@ fn byte_is_printable(b: u8) -> bool {
     }
 }
 
+const HEXDUMP_OFFSET_LUT_MAX: usize = 0xFFFF;
+const HEXDUMP_OFFSET_TOO_LARGE: &str = "0x??????  ";
+
 fn fmt_hexdump_offset(offset: usize) -> &'static str {
     use std::sync::OnceLock;
 
     // Precompute offsets for 0..=0xFFFF (more than enough for typical small captures).
     // If we ever exceed this, fall back to a formatted string.
-    const MAX: usize = 0xFFFF;
+    const MAX: usize = HEXDUMP_OFFSET_LUT_MAX;
 
     static LUT: OnceLock<Box<[Box<str>]>> = OnceLock::new();
     let lut = LUT.get_or_init(|| {
@@ -468,7 +471,7 @@ fn fmt_hexdump_offset(offset: usize) -> &'static str {
         &lut[offset]
     } else {
         // Should be very rare; we keep a placeholder rather than leaking.
-        "0x??????  "
+        HEXDUMP_OFFSET_TOO_LARGE
     }
 }
 
@@ -1514,7 +1517,7 @@ mod tests {
 
     #[test]
     fn fmt_hexdump_offset_uses_placeholder_for_huge_offsets() {
-        assert_eq!(fmt_hexdump_offset(0x1_0000), "0x??????  ");
+        assert_eq!(fmt_hexdump_offset(0x1_0000), HEXDUMP_OFFSET_TOO_LARGE);
     }
 }
 
