@@ -398,6 +398,11 @@ fn byte_is_printable(b: u8) -> bool {
 
 const HEXDUMP_COLS: usize = 16;
 
+fn match_ordinal(match_positions: &[usize], current: Option<usize>) -> Option<usize> {
+    let cur = current?;
+    match_positions.iter().position(|p| *p == cur)
+}
+
 fn first_match_and_scroll(bytes: &[u8], needle: &[u8]) -> Option<(usize, u16)> {
     if needle.is_empty() {
         return None;
@@ -722,23 +727,38 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     };
 
                     let needle = app.stream_search.as_bytes();
-                    let match_ranges: Vec<(usize, usize)> = if needle.is_empty() {
+                    let match_positions: Vec<usize> = if needle.is_empty() {
                         Vec::new()
                     } else {
                         crate::search::find_all_subslice_positions(&bytes, needle, 200)
-                            .into_iter()
-                            .map(|pos| (pos, pos.saturating_add(needle.len())))
-                            .collect()
                     };
+                    let match_ranges: Vec<(usize, usize)> = match_positions
+                        .iter()
+                        .map(|pos| (*pos, pos.saturating_add(needle.len())))
+                        .collect();
 
                     let current = app.stream_last_match.map(|pos| (pos, needle.len()));
+
+                    let status = if needle.is_empty() {
+                        String::new()
+                    } else {
+                        let total = match_positions.len();
+                        let cur = match_ordinal(&match_positions, app.stream_last_match)
+                            .map(|i| i + 1)
+                            .unwrap_or(0);
+                        format!("  search=\"{}\" {cur}/{total}", app.stream_search)
+                    };
+
+                    let title = format!(
+                        "Stream: {label}{status}  (Tab A→B/B→A/Combined, / search, n/N next/prev, ↑/↓ scroll, Esc back/clear)"
+                    );
 
                     let text = bytes_to_pretty_text(&bytes, &match_ranges, current);
                     let p = Paragraph::new(text)
                         .block(
                             Block::default()
                                 .borders(Borders::ALL)
-                                .title(format!("Stream: {label}  (Tab A→B/B→A/Combined, / search, n/N next/prev, ↑/↓ scroll, Esc back/clear)"))
+                                .title(title)
                                 .style(Style::default().bg(c_panel())),
                         )
                         .wrap(Wrap { trim: false })
@@ -1172,6 +1192,16 @@ mod tests {
         let (pos, scroll) = first_match_and_scroll(&big, needle).unwrap();
         assert_eq!(pos, 32);
         assert_eq!(scroll, 2);
+    }
+
+    #[test]
+    fn match_ordinal_finds_current_match_index() {
+        let positions = vec![0usize, 4usize, 10usize];
+        assert_eq!(match_ordinal(&positions, Some(0)), Some(0));
+        assert_eq!(match_ordinal(&positions, Some(4)), Some(1));
+        assert_eq!(match_ordinal(&positions, Some(10)), Some(2));
+        assert_eq!(match_ordinal(&positions, Some(1)), None);
+        assert_eq!(match_ordinal(&positions, None), None);
     }
 }
 
