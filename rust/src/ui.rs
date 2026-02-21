@@ -1819,6 +1819,19 @@ mod tests {
     fn match_cap_suffix_is_empty_below_cap() {
         assert_eq!(match_cap_suffix(STREAM_MATCH_HIGHLIGHT_CAP - 1), "");
     }
+
+    #[test]
+    fn tab_prev_is_noop_outside_stream_view() {
+        let mut app = App::new(
+            "/tmp/nope.pcap",
+            Vec::new(),
+            FlowIndex { flows: Vec::new() },
+        );
+        app.view = View::Flows;
+        app.stream_tab = StreamTab::Combined;
+        app.tab_prev();
+        assert!(matches!(app.stream_tab, StreamTab::Combined));
+    }
 }
 
 const STREAM_SEARCH_MODAL_TITLE: &str = "Stream search";
