@@ -315,6 +315,7 @@ impl App {
             }
             Modal::StreamSearch => {
                 self.stream_search.clear();
+                self.stream_last_match = None;
             }
             Modal::None => {}
         }
