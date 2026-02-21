@@ -467,6 +467,7 @@ const HEXDUMP_GROUP: usize = HEXDUMP_COLS / 2;
 const HEXDUMP_GUTTER: &str = "  | ";
 const HEXDUMP_GUTTER_END: &str = " |";
 const HEXDUMP_SPLIT: &str = "  ";
+// Heuristic: roughly enough spans for offset + hex bytes + separators + ascii + end gutter.
 const HEXDUMP_SPANS_CAP: usize = 8 + HEXDUMP_COLS * 4;
 const STREAM_MATCH_HIGHLIGHT_CAP: usize = 2000;
 
