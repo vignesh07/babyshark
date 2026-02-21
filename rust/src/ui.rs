@@ -188,6 +188,8 @@ impl App {
         self.stream_scroll = 0;
     }
 
+    /// Recompute `stream_match_count` for the current stream view/tab
+    /// (based on the current `stream_search` query), if a flow is selected.
     fn refresh_stream_match_count(&mut self) {
         if self.view == View::Stream {
             if let Some(fl) = self.selected_flow() {
