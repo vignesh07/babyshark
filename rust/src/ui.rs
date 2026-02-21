@@ -188,7 +188,6 @@ impl App {
         self.stream_scroll = 0;
     }
 
-    /// Count stream search matches (capped to STREAM_MATCH_HIGHLIGHT_CAP).
     fn refresh_stream_match_count(&mut self) {
         if self.view == View::Stream {
             if let Some(fl) = self.selected_flow() {
