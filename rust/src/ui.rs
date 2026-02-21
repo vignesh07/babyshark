@@ -242,6 +242,7 @@ impl App {
             }
             Modal::StreamSearch => {
                 self.stream_last_match = None;
+                self.stream_scroll = 0;
                 if self.view == View::Stream {
                     if let Some(fl) = self.selected_flow() {
                         let bytes = build_stream_bytes(&self.rows, fl, self.stream_tab);
