@@ -1456,7 +1456,7 @@ mod tests {
     #[test]
     fn match_styles_distinguish_current_from_other_matches() {
         assert_ne!(style_current_match(), style_any_match());
-        assert_ne!(style_any_match(), style_any_match_base(),);
+        assert_ne!(style_any_match(), style_any_match_base());
     }
 
     #[test]
