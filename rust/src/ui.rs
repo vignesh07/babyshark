@@ -104,6 +104,7 @@ pub struct App {
     // stream search
     pub stream_search: String,
     pub stream_last_match: Option<usize>,
+    pub stream_match_count: usize,
 }
 
 impl App {
@@ -126,6 +127,7 @@ impl App {
             stream_scroll: 0,
             stream_search: String::new(),
             stream_last_match: None,
+            stream_match_count: 0,
         };
         app.recompute_visible();
         app
@@ -174,6 +176,7 @@ impl App {
         self.view = View::Stream;
         self.stream_scroll = 0;
         self.stream_last_match = None;
+        self.stream_match_count = 0;
     }
 
     fn back(&mut self) {
@@ -193,6 +196,7 @@ impl App {
         };
         self.stream_scroll = 0;
         self.stream_last_match = None;
+        self.stream_match_count = 0;
 
         // Preserve search context when switching tabs: if we have a query,
         // jump to the first match in the new stream view.
@@ -200,6 +204,13 @@ impl App {
             if let Some(fl) = self.selected_flow() {
                 let bytes = build_stream_bytes(&self.rows, fl, self.stream_tab);
                 let needle = self.stream_search.as_bytes();
+
+                self.stream_match_count = if needle.is_empty() {
+                    0
+                } else {
+                    crate::search::find_all_subslice_positions(&bytes, needle, 2000).len()
+                };
+
                 if let Some((pos, scroll)) = first_match_and_scroll(&bytes, needle) {
                     self.stream_last_match = Some(pos);
                     self.stream_scroll = scroll;
@@ -238,6 +249,7 @@ impl App {
     fn open_stream_search(&mut self) {
         self.modal = Modal::StreamSearch;
         self.stream_last_match = None;
+        self.stream_match_count = 0;
         // keep existing search text
     }
 
@@ -256,12 +268,21 @@ impl App {
             }
             Modal::StreamSearch => {
                 self.stream_last_match = None;
+                self.stream_match_count = 0;
+                self.stream_match_count = 0;
                 self.stream_scroll = 0;
 
                 if self.view == View::Stream {
                     if let Some(fl) = self.selected_flow() {
                         let bytes = build_stream_bytes(&self.rows, fl, self.stream_tab);
                         let needle = self.stream_search.as_bytes();
+
+                        self.stream_match_count = if needle.is_empty() {
+                            0
+                        } else {
+                            crate::search::find_all_subslice_positions(&bytes, needle, 2000).len()
+                        };
+
                         if let Some((pos, scroll)) = first_match_and_scroll(&bytes, needle) {
                             self.stream_last_match = Some(pos);
                             self.stream_scroll = scroll;
@@ -277,6 +298,8 @@ impl App {
     fn close_modal_cancel(&mut self) {
         if self.modal == Modal::StreamSearch {
             self.stream_last_match = None;
+            self.stream_match_count = 0;
+            self.stream_match_count = 0;
         }
         self.modal = Modal::None;
     }
@@ -325,6 +348,9 @@ impl App {
             Modal::StreamSearch => {
                 self.stream_search.clear();
                 self.stream_last_match = None;
+                self.stream_match_count = 0;
+                self.stream_match_count = 0;
+                self.stream_match_count = 0;
             }
             Modal::None => {}
         }
@@ -750,6 +776,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     } else {
                         crate::search::find_all_subslice_positions(&bytes, needle, 2000)
                     };
+                    app.stream_match_count = match_positions.len();
                     let mut match_ranges: Vec<(usize, usize)> = match_positions
                         .iter()
                         .map(|pos| (*pos, pos.saturating_add(needle.len())))
@@ -888,7 +915,13 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     render_modal(f, size, "Bookmark note", &app.bookmark_note, app.filter.show_tcp, app.filter.show_udp);
                 }
                 Modal::StreamSearch => {
-                    render_search_modal(f, size, &app.stream_search, app.stream_last_match.is_some());
+                    render_search_modal(
+                        f,
+                        size,
+                        &app.stream_search,
+                        app.stream_match_count,
+                        app.stream_last_match.is_some(),
+                    );
                 }
                 Modal::None => {}
             }
@@ -1281,6 +1314,7 @@ fn render_search_modal(
     f: &mut ratatui::Frame,
     size: ratatui::layout::Rect,
     input: &str,
+    match_count: usize,
     has_match: bool,
 ) {
     let area = centered_rect(70, 22, size);
@@ -1319,6 +1353,19 @@ fn render_search_modal(
                 Style::default().fg(if input.is_empty() {
                     c_muted()
                 } else if has_match {
+                    Color::Green
+                } else {
+                    Color::Red
+                }),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled("Matches: ", Style::default().fg(c_muted())),
+            Span::styled(
+                format!("{match_count}"),
+                Style::default().fg(if input.is_empty() {
+                    c_muted()
+                } else if match_count > 0 {
                     Color::Green
                 } else {
                     Color::Red
