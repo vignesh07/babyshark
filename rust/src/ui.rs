@@ -312,7 +312,6 @@ impl App {
             Modal::StreamSearch => {
                 self.stream_last_match = None;
                 self.stream_match_count = 0;
-                self.stream_scroll = 0;
 
                 if self.view == View::Stream {
                     if let Some(fl) = self.selected_flow() {
@@ -1668,6 +1667,24 @@ mod tests {
         app.stream_scroll = 42;
         app.close_modal_cancel();
         assert_eq!(app.stream_scroll, 0);
+    }
+
+    #[test]
+    fn applying_stream_search_without_flow_does_not_reset_scroll() {
+        let mut app = App::new(
+            "/tmp/nope.pcap",
+            Vec::new(),
+            FlowIndex { flows: Vec::new() },
+        );
+        app.modal = Modal::StreamSearch;
+        app.view = View::Stream;
+        app.stream_scroll = 7;
+        app.stream_search = "zzz".to_string();
+
+        app.close_modal_apply();
+
+        // With no selected flow, applying the search should not disturb the current scroll.
+        assert_eq!(app.stream_scroll, 7);
     }
 }
 
