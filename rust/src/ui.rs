@@ -269,7 +269,6 @@ impl App {
             Modal::StreamSearch => {
                 self.stream_last_match = None;
                 self.stream_match_count = 0;
-                self.stream_match_count = 0;
                 self.stream_scroll = 0;
 
                 if self.view == View::Stream {
@@ -298,7 +297,6 @@ impl App {
     fn close_modal_cancel(&mut self) {
         if self.modal == Modal::StreamSearch {
             self.stream_last_match = None;
-            self.stream_match_count = 0;
             self.stream_match_count = 0;
         }
         self.modal = Modal::None;
@@ -348,8 +346,6 @@ impl App {
             Modal::StreamSearch => {
                 self.stream_search.clear();
                 self.stream_last_match = None;
-                self.stream_match_count = 0;
-                self.stream_match_count = 0;
                 self.stream_match_count = 0;
             }
             Modal::None => {}
