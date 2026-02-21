@@ -1070,7 +1070,13 @@ fn render_search_modal(
             Span::styled("Status: ", Style::default().fg(c_muted())),
             Span::styled(
                 status,
-                Style::default().fg(if input.is_empty() { c_muted() } else if has_match { Color::Green } else { Color::Red }),
+                Style::default().fg(if input.is_empty() {
+                    c_muted()
+                } else if has_match {
+                    Color::Green
+                } else {
+                    Color::Red
+                }),
             ),
         ]),
         Line::from(Span::raw("")),
