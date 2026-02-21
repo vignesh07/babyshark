@@ -428,6 +428,7 @@ fn byte_is_printable(b: u8) -> bool {
 }
 
 const HEXDUMP_COLS: usize = 16;
+const HEXDUMP_GUTTER: &str = "  | ";
 
 fn match_ordinal(match_positions: &[usize], current: Option<usize>) -> Option<usize> {
     let cur = current?;
@@ -550,7 +551,7 @@ fn bytes_to_pretty_lines(
         }
 
         spans.push(Span::styled(
-            "  | ",
+            HEXDUMP_GUTTER,
             Style::default().fg(c_muted()).add_modifier(Modifier::DIM),
         ));
 
