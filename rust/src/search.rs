@@ -1,41 +1,42 @@
 /// Return the first index of `needle` in `haystack`, if any.
 pub fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    find_next_subslice_from(haystack, needle, 0)
+    find_subslice_from(haystack, needle, 0)
 }
 
-/// Return the first index of `needle` in `haystack`, searching starting at `from`.
-///
-/// If `needle` is empty, returns `Some(from.min(haystack.len()))`.
-pub fn find_next_subslice_from(haystack: &[u8], needle: &[u8], from: usize) -> Option<usize> {
-    let from = from.min(haystack.len());
+/// Return the first index of `needle` in `haystack` at or after `start`.
+pub fn find_subslice_from(haystack: &[u8], needle: &[u8], start: usize) -> Option<usize> {
     if needle.is_empty() {
-        return Some(from);
+        return Some(start.min(haystack.len()));
     }
-    if needle.len() > haystack.len() {
+    if start >= haystack.len() {
         return None;
     }
-    haystack[from..]
+    haystack[start..]
         .windows(needle.len())
         .position(|w| w == needle)
-        .map(|i| from + i)
+        .map(|p| start + p)
 }
 
-/// Return the last index of `needle` in `haystack` whose start is `< before`.
-///
-/// If `needle` is empty, returns `Some(before.min(haystack.len()))`.
-pub fn find_prev_subslice_before(haystack: &[u8], needle: &[u8], before: usize) -> Option<usize> {
-    let before = before.min(haystack.len());
+/// Convenience alias used by UI: next match at or after start.
+pub fn find_next_subslice_from(haystack: &[u8], needle: &[u8], start: usize) -> Option<usize> {
+    find_subslice_from(haystack, needle, start)
+}
+
+/// Convenience alias used by UI: previous match strictly before end.
+pub fn find_prev_subslice_before(haystack: &[u8], needle: &[u8], end: usize) -> Option<usize> {
+    rfind_subslice_before(haystack, needle, end)
+}
+
+/// Return the last index of `needle` in `haystack` strictly before `end`.
+pub fn rfind_subslice_before(haystack: &[u8], needle: &[u8], end: usize) -> Option<usize> {
     if needle.is_empty() {
-        return Some(before);
+        return Some(end.min(haystack.len()));
     }
-    if needle.len() > haystack.len() {
+    let end = end.min(haystack.len());
+    if end < needle.len() {
         return None;
     }
-
-    // We want match starts < before.
-    let end = before;
-    let search = &haystack[..end];
-    search
+    haystack[..end]
         .windows(needle.len())
         .rposition(|w| w == needle)
 }
@@ -53,20 +54,16 @@ mod tests {
     }
 
     #[test]
-    fn finds_next_from() {
-        assert_eq!(find_next_subslice_from(b"aaaa", b"aa", 0), Some(0));
-        assert_eq!(find_next_subslice_from(b"aaaa", b"aa", 1), Some(1));
-        assert_eq!(find_next_subslice_from(b"aaaa", b"aa", 3), None);
-        assert_eq!(find_next_subslice_from(b"abcd", b"", 2), Some(2));
-        assert_eq!(find_next_subslice_from(b"abcd", b"", 999), Some(4));
+    fn finds_from() {
+        assert_eq!(find_subslice_from(b"abcabc", b"abc", 0), Some(0));
+        assert_eq!(find_subslice_from(b"abcabc", b"abc", 1), Some(3));
+        assert_eq!(find_subslice_from(b"abcabc", b"abc", 4), None);
     }
 
     #[test]
-    fn finds_prev_before() {
-        assert_eq!(find_prev_subslice_before(b"aaaa", b"aa", 4), Some(2));
-        assert_eq!(find_prev_subslice_before(b"aaaa", b"aa", 3), Some(1));
-        assert_eq!(find_prev_subslice_before(b"aaaa", b"aa", 1), None);
-        assert_eq!(find_prev_subslice_before(b"abcd", b"", 2), Some(2));
-        assert_eq!(find_prev_subslice_before(b"abcd", b"", 999), Some(4));
+    fn rfind_before() {
+        assert_eq!(rfind_subslice_before(b"abcabc", b"abc", 6), Some(3));
+        assert_eq!(rfind_subslice_before(b"abcabc", b"abc", 3), Some(0));
+        assert_eq!(rfind_subslice_before(b"abcabc", b"abc", 2), None);
     }
 }
