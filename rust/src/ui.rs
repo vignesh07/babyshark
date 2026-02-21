@@ -406,17 +406,25 @@ pub fn run_tui(app: &mut App) -> Result<()> {
 }
 
 fn byte_ascii(b: u8) -> char {
-    let c = b as char;
-    if c.is_ascii_graphic() || c == ' ' {
-        c
-    } else {
-        '.'
+    match b {
+        b'\n' => '⏎',
+        b'\t' => '⇥',
+        _ => {
+            let c = b as char;
+            if c.is_ascii_graphic() || c == ' ' {
+                c
+            } else {
+                '.'
+            }
+        }
     }
 }
 
 fn byte_is_printable(b: u8) -> bool {
-    let c = b as char;
-    c.is_ascii_graphic() || c == ' '
+    matches!(b, b'\n' | b'\t') || {
+        let c = b as char;
+        c.is_ascii_graphic() || c == ' '
+    }
 }
 
 const HEXDUMP_COLS: usize = 16;
@@ -1320,6 +1328,17 @@ mod tests {
 
         app.scroll_up();
         assert_eq!(app.stream_last_match, Some(123));
+    }
+
+    #[test]
+    fn ascii_column_shows_tab_and_newline_glyphs() {
+        let bytes = b"a\tb\n";
+        let lines = bytes_to_pretty_lines(bytes, &[], None);
+        assert_eq!(lines.len(), 1);
+
+        let spans = &lines[0].spans;
+        assert!(spans.iter().any(|s| s.content.as_ref() == "⇥"));
+        assert!(spans.iter().any(|s| s.content.as_ref() == "⏎"));
     }
 }
 
