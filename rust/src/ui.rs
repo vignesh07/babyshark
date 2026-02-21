@@ -1477,7 +1477,15 @@ mod tests {
         let bytes = b"ab".repeat(STREAM_MATCH_HIGHLIGHT_CAP + 10);
         assert_eq!(app.count_stream_matches(&bytes), STREAM_MATCH_HIGHLIGHT_CAP);
     }
+
+    #[test]
+    fn search_modal_uses_plural_no_matches_wording() {
+        assert_eq!(STREAM_SEARCH_STATUS_NO_MATCHES, "no matches");
+    }
 }
+
+const STREAM_SEARCH_STATUS_MATCH_FOUND: &str = "match found (n/N to navigate)";
+const STREAM_SEARCH_STATUS_NO_MATCHES: &str = "no matches";
 
 fn render_search_modal(
     f: &mut ratatui::Frame,
@@ -1504,9 +1512,9 @@ fn render_search_modal(
     let status = if input.is_empty() {
         "type to search"
     } else if has_match {
-        "match found (n/N to navigate)"
+        STREAM_SEARCH_STATUS_MATCH_FOUND
     } else {
-        "no matches"
+        STREAM_SEARCH_STATUS_NO_MATCHES
     };
 
     let mut lines = vec![
