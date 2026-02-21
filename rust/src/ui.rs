@@ -502,6 +502,14 @@ const HEXDUMP_SPLIT: &str = "  ";
 const HEXDUMP_SPANS_CAP: usize = 8 + HEXDUMP_COLS * 4;
 const STREAM_MATCH_HIGHLIGHT_CAP: usize = 2000;
 
+fn match_cap_suffix(total: usize) -> &'static str {
+    if total >= STREAM_MATCH_HIGHLIGHT_CAP {
+        "+"
+    } else {
+        ""
+    }
+}
+
 fn match_ordinal(match_positions: &[usize], current: Option<usize>) -> Option<usize> {
     let cur = current?;
     match_positions.iter().position(|p| *p == cur)
@@ -880,7 +888,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             format!(
                                 "  search=\"{}\" {cur_disp}/{total}{}",
                                 app.stream_search,
-                                if total >= STREAM_MATCH_HIGHLIGHT_CAP { "+" } else { "" },
+                                match_cap_suffix(total),
                             )
                         }
                     };
