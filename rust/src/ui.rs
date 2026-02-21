@@ -1686,6 +1686,19 @@ mod tests {
         // With no selected flow, applying the search should not disturb the current scroll.
         assert_eq!(app.stream_scroll, 7);
     }
+
+    #[test]
+    fn first_match_and_scroll_returns_scroll_row_for_match() {
+        let bytes = vec![b'x'; 40];
+        // Put "ab" at pos 32.
+        let mut bytes = bytes;
+        bytes[32] = b'a';
+        bytes[33] = b'b';
+
+        let (pos, scroll) = first_match_and_scroll(&bytes, b"ab").unwrap();
+        assert_eq!(pos, 32);
+        assert_eq!(scroll, 2);
+    }
 }
 
 const STREAM_SEARCH_MODAL_TITLE: &str = "Stream search";
