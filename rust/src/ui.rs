@@ -498,6 +498,17 @@ fn byte_in_any_range(abs: usize, ranges: &[(usize, usize)]) -> bool {
         .is_ok()
 }
 
+fn style_current_match() -> Style {
+    Style::default()
+        .fg(Color::Black)
+        .bg(c_accent())
+        .add_modifier(Modifier::BOLD)
+}
+
+fn style_any_match() -> Style {
+    Style::default().fg(Color::Black).bg(c_accent())
+}
+
 fn first_match_and_scroll(bytes: &[u8], needle: &[u8]) -> Option<(usize, u16)> {
     if needle.is_empty() {
         return None;
@@ -576,12 +587,9 @@ fn bytes_to_pretty_lines(
                 let in_any = byte_in_any_range(abs, match_ranges);
 
                 let st = if in_cur {
-                    Style::default()
-                        .fg(Color::Black)
-                        .bg(c_accent())
-                        .add_modifier(Modifier::BOLD)
+                    style_current_match()
                 } else if in_any {
-                    Style::default().fg(Color::Black).bg(c_accent())
+                    style_any_match()
                 } else {
                     Style::default().fg(c_muted())
                 };
@@ -608,12 +616,9 @@ fn bytes_to_pretty_lines(
                 let in_any = byte_in_any_range(abs, match_ranges);
 
                 let st = if in_cur {
-                    Style::default()
-                        .fg(Color::Black)
-                        .bg(c_accent())
-                        .add_modifier(Modifier::BOLD)
+                    style_current_match()
                 } else if in_any {
-                    Style::default().fg(Color::Black).bg(c_accent())
+                    style_any_match()
                 } else {
                     Style::default().fg(if byte_is_printable(chunk[i]) {
                         c_text()
@@ -1241,7 +1246,7 @@ mod tests {
             .fg(Color::Black)
             .bg(c_accent())
             .add_modifier(Modifier::BOLD);
-        let any_style = Style::default().fg(Color::Black).bg(c_accent());
+        let any_style = style_any_match();
 
         let spans = &lines[0].spans;
 
@@ -1302,7 +1307,7 @@ mod tests {
         let bytes = b"abxxab";
         let ranges_unsorted = vec![(4usize, 6usize), (0usize, 2usize)];
 
-        let any_style = Style::default().fg(Color::Black).bg(c_accent());
+        let any_style = style_any_match();
 
         // Unsorted: only one of the two occurrences is likely to be highlighted.
         let line_unsorted = bytes_to_pretty_lines(bytes, &ranges_unsorted, None);
