@@ -558,8 +558,8 @@ const UI_ONE_SPACE: &str = " ";
 const UI_SPACER: &str = "  ";
 const STREAM_MATCH_HIGHLIGHT_CAP: usize = 2000;
 
-fn match_cap_suffix(total: usize) -> &'static str {
-    if total >= STREAM_MATCH_HIGHLIGHT_CAP {
+fn match_cap_suffix(count: usize) -> &'static str {
+    if count >= STREAM_MATCH_HIGHLIGHT_CAP {
         "+"
     } else {
         ""
