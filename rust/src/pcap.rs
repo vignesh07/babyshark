@@ -16,6 +16,12 @@ pub enum L4Proto {
     Other(u8),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FlowDir {
+    AtoB,
+    BtoA,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FlowKey {
     pub src: IpAddr,
@@ -63,6 +69,7 @@ pub struct PacketRow {
     pub dst_port: Option<u16>,
     pub summary: String,
     pub flow: Option<FlowKey>,
+    pub flow_dir: Option<FlowDir>,
     pub payload: Vec<u8>,
 }
 
@@ -85,6 +92,7 @@ fn decode_packet(index: usize, ts: DateTime<Utc>, data: &[u8]) -> PacketRow {
         dst_port: None,
         summary: String::new(),
         flow: None,
+        flow_dir: None,
         payload: Vec::new(),
     };
 
