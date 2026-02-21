@@ -122,7 +122,7 @@ impl App {
             filter: FlowFilter::default(),
             bookmark_note: String::new(),
             modal: Modal::None,
-            stream_tab: StreamTab::Combined,
+            stream_tab: StreamTab::AtoB,
             stream_scroll: 0,
             stream_search: String::new(),
             stream_last_match: None,
