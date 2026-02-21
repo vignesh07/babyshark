@@ -468,7 +468,6 @@ fn hex_byte_upper(b: u8) -> &'static str {
 }
 
 const HEXDUMP_COLS: usize = 16;
-const HEXDUMP_LAST_COL: usize = HEXDUMP_COLS - 1;
 const HEXDUMP_GROUP: usize = HEXDUMP_COLS / 2;
 const HEXDUMP_GUTTER: &str = "  | ";
 const HEXDUMP_GUTTER_END: &str = " |";
@@ -481,7 +480,7 @@ fn match_ordinal(match_positions: &[usize], current: Option<usize>) -> Option<us
 }
 
 fn scroll_for_match_pos(pos: usize) -> u16 {
-    ((pos + HEXDUMP_LAST_COL) / HEXDUMP_COLS) as u16
+    (pos / HEXDUMP_COLS) as u16
 }
 
 fn byte_in_any_range(abs: usize, ranges: &[(usize, usize)]) -> bool {
@@ -1279,7 +1278,7 @@ mod tests {
         // prev from the first match wraps to the last
         let (pos, scroll) = prev_match_and_scroll(bytes, needle, Some(0)).unwrap();
         assert_eq!(pos, 4);
-        assert_eq!(scroll, 1);
+        assert_eq!(scroll, 0);
 
         // Scroll computation: match at offset 32 should land on row 2 (0-indexed) with 16 columns.
         let mut big = vec![b'x'; 40];
@@ -1428,9 +1427,9 @@ mod tests {
     fn scroll_for_match_pos_rounds_up_to_containing_row() {
         // With 16-byte rows, we "round up" so the matching byte is visible.
         assert_eq!(scroll_for_match_pos(0), 0);
-        assert_eq!(scroll_for_match_pos(15), 1);
+        assert_eq!(scroll_for_match_pos(15), 0);
         assert_eq!(scroll_for_match_pos(16), 1);
-        assert_eq!(scroll_for_match_pos(31), 2);
+        assert_eq!(scroll_for_match_pos(31), 1);
         assert_eq!(scroll_for_match_pos(32), 2);
     }
 }
