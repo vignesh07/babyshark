@@ -1319,7 +1319,7 @@ mod tests {
             .iter()
             .filter(|s| s.style == any_style)
             .count();
-        assert!(highlighted_unsorted < 2);
+        assert_eq!(highlighted_unsorted, 1);
 
         // Sorted: both occurrences should be highlighted.
         let mut ranges_sorted = ranges_unsorted.clone();
