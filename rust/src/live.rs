@@ -298,7 +298,11 @@ pub fn parse_tshark_fields_line(line: &str) -> Option<PacketRow> {
     Some(row)
 }
 
-fn spawn_tshark_child_fields(iface: &str, bpf: Option<&str>) -> Result<Child> {
+fn spawn_tshark_child_fields(
+    iface: &str,
+    bpf: Option<&str>,
+    dfilter: Option<&str>,
+) -> Result<Child> {
     // -l: line buffered; -n: no name resolution
     let mut cmd = Command::new("tshark");
 
@@ -306,6 +310,11 @@ fn spawn_tshark_child_fields(iface: &str, bpf: Option<&str>) -> Result<Child> {
 
     if let Some(expr) = bpf {
         args.push("-f".into());
+        args.push(expr.into());
+    }
+
+    if let Some(expr) = dfilter {
+        args.push("-Y".into());
         args.push(expr.into());
     }
 
@@ -363,7 +372,8 @@ pub fn spawn_live_capture_tshark_fields(
     let (tx, rx) = mpsc::channel::<PacketRow>();
 
     thread::spawn(move || {
-        let mut child = match spawn_tshark_child_fields(&iface, bpf.as_deref()) {
+        let mut child = match spawn_tshark_child_fields(&iface, bpf.as_deref(), dfilter.as_deref())
+        {
             Ok(c) => c,
             Err(_) => return,
         };
