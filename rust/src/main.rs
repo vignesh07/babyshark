@@ -17,6 +17,10 @@ struct Args {
     #[arg(long)]
     live: Option<String>,
 
+    /// BPF capture filter passed to tshark (-f) in live mode (e.g. "tcp port 443")
+    #[arg(long)]
+    bpf: Option<String>,
+
     /// List capture interfaces via tshark
     #[arg(long)]
     list_ifaces: bool,
@@ -56,7 +60,8 @@ fn main() -> Result<()> {
 
     if let Some(iface) = args.live {
         babyshark::live::tshark_live_preflight(&iface)?;
-        let rx = babyshark::live::spawn_live_capture_tshark_fields(iface.clone())?;
+        let rx =
+            babyshark::live::spawn_live_capture_tshark_fields(iface.clone(), args.bpf.clone())?;
         let mut app = babyshark::ui::App::new(
             &format!("live:{iface}"),
             Vec::new(),

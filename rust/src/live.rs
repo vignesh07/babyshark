@@ -298,61 +298,72 @@ pub fn parse_tshark_fields_line(line: &str) -> Option<PacketRow> {
     Some(row)
 }
 
-fn spawn_tshark_child_fields(iface: &str) -> Result<Child> {
+fn spawn_tshark_child_fields(iface: &str, bpf: Option<&str>) -> Result<Child> {
     // -l: line buffered; -n: no name resolution
     let mut cmd = Command::new("tshark");
-    cmd.args([
-        "-l",
-        "-n",
-        "-i",
-        iface,
-        "-T",
-        "fields",
-        "-E",
-        "separator=	",
-        "-E",
-        "occurrence=f",
-        "-E",
-        "header=n",
-        "-e",
-        "frame.time_epoch",
-        "-e",
-        "frame.len",
-        "-e",
-        "ip.src",
-        "-e",
-        "ip.dst",
-        "-e",
-        "ipv6.src",
-        "-e",
-        "ipv6.dst",
-        "-e",
-        "tcp.srcport",
-        "-e",
-        "tcp.dstport",
-        "-e",
-        "udp.srcport",
-        "-e",
-        "udp.dstport",
-        "-e",
-        "_ws.col.Protocol",
-        "-e",
-        "tcp.flags",
-    ])
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped());
+
+    let mut args: Vec<String> = vec!["-l".into(), "-n".into(), "-i".into(), iface.into()];
+
+    if let Some(expr) = bpf {
+        args.push("-f".into());
+        args.push(expr.into());
+    }
+
+    args.extend(
+        [
+            "-T",
+            "fields",
+            "-E",
+            "separator=	",
+            "-E",
+            "occurrence=f",
+            "-E",
+            "header=n",
+            "-e",
+            "frame.time_epoch",
+            "-e",
+            "frame.len",
+            "-e",
+            "ip.src",
+            "-e",
+            "ip.dst",
+            "-e",
+            "ipv6.src",
+            "-e",
+            "ipv6.dst",
+            "-e",
+            "tcp.srcport",
+            "-e",
+            "tcp.dstport",
+            "-e",
+            "udp.srcport",
+            "-e",
+            "udp.dstport",
+            "-e",
+            "_ws.col.Protocol",
+            "-e",
+            "tcp.flags",
+        ]
+        .iter()
+        .map(|s| s.to_string()),
+    );
+
+    cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
 
     cmd.spawn().context("failed to spawn tshark")
 }
 
 /// Spawn a background `tshark` process and stream parsed packets into a channel.
-pub fn spawn_live_capture_tshark_fields(iface: String) -> Result<Receiver<PacketRow>> {
+pub fn spawn_live_capture_tshark_fields(
+    iface: String,
+    bpf: Option<String>,
+) -> Result<Receiver<PacketRow>> {
     let _ver = tshark_version().context("tshark not available (required for --live)")?;
 
     let (tx, rx) = mpsc::channel::<PacketRow>();
 
     thread::spawn(move || {
-        let mut child = match spawn_tshark_child_fields(&iface) {
+        let mut child = match spawn_tshark_child_fields(&iface, bpf.as_deref()) {
             Ok(c) => c,
             Err(_) => return,
         };
