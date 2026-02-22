@@ -78,6 +78,13 @@ pub enum Modal {
 
 pub struct App {
     pub pcap_path: PathBuf,
+    pub live_iface: Option<String>,
+    pub live_rx: Option<std::sync::mpsc::Receiver<crate::pcap::PacketRow>>,
+    pub live_total_packets: usize,
+    pub live_pps: f64,
+    pub live_pps_window_start: std::time::Instant,
+    pub live_pps_window_count: usize,
+    pub live_pending_rebuild: usize,
     pub casefile: CaseFile,
 
     pub rows: Vec<PacketRow>,
@@ -114,6 +121,13 @@ impl App {
 
         let mut app = App {
             pcap_path,
+            live_iface: None,
+            live_rx: None,
+            live_total_packets: 0,
+            live_pps: 0.0,
+            live_pps_window_start: std::time::Instant::now(),
+            live_pps_window_count: 0,
+            live_pending_rebuild: 0,
             casefile,
             rows,
             flows,
@@ -196,6 +210,63 @@ impl App {
                 let bytes = build_stream_bytes(&self.rows, fl, self.stream_tab);
                 self.stream_match_count = self.count_stream_matches(&bytes);
             }
+        }
+    }
+
+    fn poll_live(&mut self) {
+        const LIVE_CAP: usize = 20_000;
+        const REBUILD_EVERY: usize = 200;
+
+        let Some(rx) = self.live_rx.as_ref() else {
+            return;
+        };
+
+        let mut added: usize = 0;
+        while let Ok(mut row) = rx.try_recv() {
+            row.index = self.rows.len();
+            self.rows.push(row);
+            self.live_total_packets += 1;
+            self.live_pps_window_count += 1;
+            self.live_pending_rebuild += 1;
+            added += 1;
+        }
+
+        if added == 0 {
+            // update pps window even if idle
+            if self.live_pps_window_start.elapsed().as_secs_f64() >= 1.0 {
+                let dt = self.live_pps_window_start.elapsed().as_secs_f64();
+                if dt > 0.0 {
+                    self.live_pps = (self.live_pps_window_count as f64) / dt;
+                }
+                self.live_pps_window_start = std::time::Instant::now();
+                self.live_pps_window_count = 0;
+            }
+            return;
+        }
+
+        // cap buffer (drop oldest) and renumber indices so FlowIndex packet_indices remain valid.
+        if self.rows.len() > LIVE_CAP {
+            let drop = self.rows.len() - LIVE_CAP;
+            self.rows.drain(0..drop);
+            for (i, r) in self.rows.iter_mut().enumerate() {
+                r.index = i;
+            }
+        }
+
+        // periodically rebuild flows + visible indices.
+        if self.live_pending_rebuild >= REBUILD_EVERY {
+            self.flows = FlowIndex::build(&self.rows);
+            self.apply_filter();
+            self.live_pending_rebuild = 0;
+        }
+
+        if self.live_pps_window_start.elapsed().as_secs_f64() >= 1.0 {
+            let dt = self.live_pps_window_start.elapsed().as_secs_f64();
+            if dt > 0.0 {
+                self.live_pps = (self.live_pps_window_count as f64) / dt;
+            }
+            self.live_pps_window_start = std::time::Instant::now();
+            self.live_pps_window_count = 0;
         }
     }
 
@@ -757,6 +828,8 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
     }
 
     loop {
+        app.poll_live();
+
         terminal.draw(|f| {
             let size = f.area();
 
@@ -851,7 +924,14 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         .block(
                             Block::default()
                                 .borders(Borders::ALL)
-                                .title("Flows  (Enter packets, / filter, t/u toggles, b bookmark, E export)")
+                                .title(if let Some(iface) = &app.live_iface {
+                                    format!(
+                                        "Flows [LIVE {iface}] ({:.1} pps)  (Enter packets, / filter, t/u toggles, b bookmark, E export)",
+                                        app.live_pps
+                                    )
+                                } else {
+                                    "Flows  (Enter packets, / filter, t/u toggles, b bookmark, E export)".to_string()
+                                })
                                 .style(Style::default().bg(c_panel())),
                         )
                         .highlight_style(

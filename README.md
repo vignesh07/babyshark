@@ -15,3 +15,9 @@ List live capture interfaces (requires tshark):
 ```bash
 cargo run --manifest-path rust/Cargo.toml -- --list-ifaces
 ```
+
+Live capture (requires tshark):
+
+```bash
+cargo run --manifest-path rust/Cargo.toml -- --live en0
+```

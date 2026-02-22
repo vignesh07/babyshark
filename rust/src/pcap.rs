@@ -274,7 +274,7 @@ pub fn tcp_flags_to_string(mask: u16) -> String {
     parts.join(",")
 }
 
-fn summarize(row: &PacketRow) -> String {
+pub(crate) fn summarize(row: &PacketRow) -> String {
     match (row.src, row.dst, row.proto, row.src_port, row.dst_port) {
         (Some(src), Some(dst), Some(L4Proto::Tcp), Some(sp), Some(dp)) => {
             let payload = if row.payload.is_empty() {

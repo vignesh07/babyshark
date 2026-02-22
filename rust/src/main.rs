@@ -54,10 +54,17 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    if let Some(_iface) = args.live {
-        return Err(anyhow::anyhow!(
-            "live capture is not implemented yet; use --list-ifaces to discover interfaces"
-        ));
+    if let Some(iface) = args.live {
+        let rx = babyshark::live::spawn_live_capture_tshark_fields(iface.clone())?;
+        let mut app = babyshark::ui::App::new(
+            &format!("live:{iface}"),
+            Vec::new(),
+            babyshark::flow::FlowIndex::default(),
+        );
+        app.live_iface = Some(iface);
+        app.live_rx = Some(rx);
+        babyshark::ui::run_tui(&mut app)?;
+        return Ok(());
     }
 
     // clap should prevent this

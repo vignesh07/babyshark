@@ -1,5 +1,12 @@
 use anyhow::{anyhow, Context, Result};
-use std::process::{Command, Stdio};
+use chrono::{DateTime, Utc};
+use std::io::{BufRead, BufReader};
+use std::net::IpAddr;
+use std::process::{Child, Command, Stdio};
+use std::sync::mpsc::{self, Receiver};
+use std::thread;
+
+use crate::pcap::{FlowDir, FlowKey, L4Proto, PacketRow};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IfaceEntry {
@@ -105,13 +112,208 @@ pub fn tshark_list_ifaces() -> Result<Vec<IfaceEntry>> {
     Ok(parse_tshark_ifaces_output(&stdout))
 }
 
+fn epoch_to_ts(epoch: f64) -> DateTime<Utc> {
+    let secs = epoch.floor() as i64;
+    let nanos = ((epoch - (secs as f64)) * 1e9).round() as u32;
+    DateTime::<Utc>::from_timestamp(secs, nanos)
+        .unwrap_or_else(|| DateTime::<Utc>::from_timestamp(0, 0).unwrap())
+}
+
+/// Parse a single `tshark -T fields` line (tab-separated), best-effort.
+///
+/// Field order (see `spawn_live_capture_tshark_fields`):
+/// frame.time_epoch, frame.len,
+/// ip.src, ip.dst, ipv6.src, ipv6.dst,
+/// tcp.srcport, tcp.dstport, udp.srcport, udp.dstport,
+/// _ws.col.Protocol,
+/// tcp.flags
+pub fn parse_tshark_fields_line(line: &str) -> Option<PacketRow> {
+    let parts: Vec<&str> = line
+        .trim_end_matches(&['\n', '\r'][..])
+        .split('\t')
+        .collect();
+    if parts.len() < 12 {
+        return None;
+    }
+
+    let epoch: f64 = parts[0].parse().ok()?;
+    let len: usize = parts[1].parse().ok().unwrap_or(0);
+
+    let ip_src = if !parts[2].is_empty() {
+        parts[2]
+    } else {
+        parts[4]
+    };
+    let ip_dst = if !parts[3].is_empty() {
+        parts[3]
+    } else {
+        parts[5]
+    };
+
+    let src: Option<IpAddr> = ip_src.parse().ok();
+    let dst: Option<IpAddr> = ip_dst.parse().ok();
+
+    let tcp_sp: Option<u16> = parts[6].parse().ok();
+    let tcp_dp: Option<u16> = parts[7].parse().ok();
+    let udp_sp: Option<u16> = parts[8].parse().ok();
+    let udp_dp: Option<u16> = parts[9].parse().ok();
+
+    let (proto, src_port, dst_port) = if tcp_sp.is_some() || tcp_dp.is_some() {
+        (Some(L4Proto::Tcp), tcp_sp, tcp_dp)
+    } else if udp_sp.is_some() || udp_dp.is_some() {
+        (Some(L4Proto::Udp), udp_sp, udp_dp)
+    } else {
+        (None, None, None)
+    };
+
+    let tcp_flags: Option<u16> = if parts[11].is_empty() {
+        None
+    } else {
+        let raw = parts[11].trim();
+        let raw = raw.strip_prefix("0x").unwrap_or(raw);
+        u16::from_str_radix(raw, 16).ok()
+    };
+
+    let ts = epoch_to_ts(epoch);
+
+    let mut row = PacketRow {
+        index: 0, // assigned by UI when appended
+        ts,
+        len,
+        src,
+        dst,
+        proto,
+        src_port,
+        dst_port,
+        summary: String::new(),
+        flow: None,
+        flow_dir: None,
+        tcp_seq: None,
+        tcp_ack: None,
+        tcp_flags,
+        payload: Vec::new(),
+    };
+
+    if let (Some(src), Some(dst), Some(proto), Some(sp), Some(dp)) =
+        (row.src, row.dst, row.proto, row.src_port, row.dst_port)
+    {
+        let fk = FlowKey {
+            src,
+            dst,
+            src_port: sp,
+            dst_port: dp,
+            proto,
+        };
+        let (_canon, flipped) = fk.canonical();
+        row.flow_dir = Some(if flipped {
+            FlowDir::BtoA
+        } else {
+            FlowDir::AtoB
+        });
+        row.flow = Some(fk);
+    }
+
+    row.summary = crate::pcap::summarize(&row);
+
+    // If tshark protocol column is available and more specific, use it in summary prefix.
+    // (We keep this best-effort, and don’t change proto semantics.)
+    let proto_col = parts[10].trim();
+    if !proto_col.is_empty() {
+        row.summary = format!("{proto_col} {}", row.summary);
+    }
+
+    Some(row)
+}
+
+fn spawn_tshark_child_fields(iface: &str) -> Result<Child> {
+    // -l: line buffered; -n: no name resolution
+    let mut cmd = Command::new("tshark");
+    cmd.args([
+        "-l",
+        "-n",
+        "-i",
+        iface,
+        "-T",
+        "fields",
+        "-E",
+        "separator=	",
+        "-E",
+        "occurrence=f",
+        "-E",
+        "header=n",
+        "-e",
+        "frame.time_epoch",
+        "-e",
+        "frame.len",
+        "-e",
+        "ip.src",
+        "-e",
+        "ip.dst",
+        "-e",
+        "ipv6.src",
+        "-e",
+        "ipv6.dst",
+        "-e",
+        "tcp.srcport",
+        "-e",
+        "tcp.dstport",
+        "-e",
+        "udp.srcport",
+        "-e",
+        "udp.dstport",
+        "-e",
+        "_ws.col.Protocol",
+        "-e",
+        "tcp.flags",
+    ])
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped());
+
+    cmd.spawn().context("failed to spawn tshark")
+}
+
+/// Spawn a background `tshark` process and stream parsed packets into a channel.
+pub fn spawn_live_capture_tshark_fields(iface: String) -> Result<Receiver<PacketRow>> {
+    let _ver = tshark_version().context("tshark not available (required for --live)")?;
+
+    let (tx, rx) = mpsc::channel::<PacketRow>();
+
+    thread::spawn(move || {
+        let mut child = match spawn_tshark_child_fields(&iface) {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+
+        let Some(stdout) = child.stdout.take() else {
+            let _ = child.kill();
+            return;
+        };
+
+        let reader = BufReader::new(stdout);
+        for line in reader.lines().flatten() {
+            if let Some(row) = parse_tshark_fields_line(&line) {
+                if tx.send(row).is_err() {
+                    break;
+                }
+            }
+        }
+
+        let _ = child.kill();
+        let _ = child.wait();
+    });
+
+    Ok(rx)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn parse_version_first_line() {
-        let s = "TShark (Wireshark) 4.2.4\nCopyright ...\n";
+        let s = "TShark (Wireshark) 4.2.4
+Copyright ...
+";
         assert_eq!(
             parse_tshark_version_output(s),
             Some("TShark (Wireshark) 4.2.4".to_string())
@@ -120,7 +322,10 @@ mod tests {
 
     #[test]
     fn parse_ifaces_basic() {
-        let s = "1. en0\n2. lo0 (Loopback)\n3. awdl0 (Apple Wireless Direct Link interface)\n";
+        let s = "1. en0
+2. lo0 (Loopback)
+3. awdl0 (Apple Wireless Direct Link interface)
+";
         let ifaces = parse_tshark_ifaces_output(s);
         assert_eq!(ifaces.len(), 3);
         assert_eq!(ifaces[0].index, 1);
@@ -128,5 +333,27 @@ mod tests {
         assert_eq!(ifaces[0].desc, None);
         assert_eq!(ifaces[1].name, "lo0");
         assert_eq!(ifaces[1].desc.as_deref(), Some("Loopback"));
+    }
+
+    #[test]
+    fn parse_tshark_fields_line_tcp() {
+        // epoch, len, ip.src, ip.dst, ipv6.src, ipv6.dst, tcp sp/dp, udp sp/dp, proto col, flags
+        let line = "1700000000.123	60	1.2.3.4	5.6.7.8			12345	443			TCP	0x0012";
+        let row = parse_tshark_fields_line(line).unwrap();
+        assert_eq!(row.len, 60);
+        assert_eq!(row.proto, Some(L4Proto::Tcp));
+        assert_eq!(row.src_port, Some(12345));
+        assert_eq!(row.dst_port, Some(443));
+        assert_eq!(row.tcp_flags, Some(0x12));
+        assert!(row.summary.contains("TCP"));
+    }
+
+    #[test]
+    fn parse_tshark_fields_line_udp_ipv6() {
+        let line = "1700000000.000	42			2001:db8::1	2001:db8::2					53	5353	UDP	";
+        let row = parse_tshark_fields_line(line).unwrap();
+        assert_eq!(row.proto, Some(L4Proto::Udp));
+        assert_eq!(row.src_port, Some(53));
+        assert_eq!(row.dst_port, Some(5353));
     }
 }
