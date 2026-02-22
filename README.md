@@ -2,8 +2,16 @@
 
 Flows-first PCAP TUI (case files, gorgeous UX). Private alpha.
 
-## Dev
+## Dev (Rust)
+
+Run against a file:
 
 ```bash
-go run ./cmd/babyshark --pcap ./capture.pcap
+cargo run --manifest-path rust/Cargo.toml -- --pcap ./capture.pcap
+```
+
+List live capture interfaces (requires tshark):
+
+```bash
+cargo run --manifest-path rust/Cargo.toml -- --list-ifaces
 ```
