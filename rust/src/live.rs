@@ -298,14 +298,12 @@ pub fn parse_tshark_fields_line(line: &str) -> Option<PacketRow> {
     Some(row)
 }
 
-fn spawn_tshark_child_fields(
+fn build_tshark_live_args(
     iface: &str,
     bpf: Option<&str>,
     dfilter: Option<&str>,
-) -> Result<Child> {
-    // -l: line buffered; -n: no name resolution
-    let mut cmd = Command::new("tshark");
-
+    write_pcap: Option<&str>,
+) -> Vec<String> {
     let mut args: Vec<String> = vec!["-l".into(), "-n".into(), "-i".into(), iface.into()];
 
     if let Some(expr) = bpf {
@@ -316,6 +314,11 @@ fn spawn_tshark_child_fields(
     if let Some(expr) = dfilter {
         args.push("-Y".into());
         args.push(expr.into());
+    }
+
+    if let Some(path) = write_pcap {
+        args.push("-w".into());
+        args.push(path.into());
     }
 
     args.extend(
@@ -357,6 +360,19 @@ fn spawn_tshark_child_fields(
         .map(|s| s.to_string()),
     );
 
+    args
+}
+
+fn spawn_tshark_child_fields(
+    iface: &str,
+    bpf: Option<&str>,
+    dfilter: Option<&str>,
+    write_pcap: Option<&str>,
+) -> Result<Child> {
+    // -l: line buffered; -n: no name resolution
+    let mut cmd = Command::new("tshark");
+    let args = build_tshark_live_args(iface, bpf, dfilter, write_pcap);
+
     cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
 
     cmd.spawn().context("failed to spawn tshark")
@@ -372,8 +388,12 @@ pub fn spawn_live_capture_tshark_fields(
     let (tx, rx) = mpsc::channel::<PacketRow>();
 
     thread::spawn(move || {
-        let mut child = match spawn_tshark_child_fields(&iface, bpf.as_deref(), dfilter.as_deref())
-        {
+        let mut child = match spawn_tshark_child_fields(
+            &iface,
+            bpf.as_deref(),
+            dfilter.as_deref(),
+            write_pcap.as_deref(),
+        ) {
             Ok(c) => c,
             Err(_) => return,
         };
@@ -401,6 +421,14 @@ pub fn spawn_live_capture_tshark_fields(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn build_tshark_live_args_includes_write_pcap() {
+        let args = build_tshark_live_args("en0", None, None, Some("out.pcapng"));
+        let pos = args.iter().position(|a| a == "-w").unwrap();
+        assert_eq!(args[pos + 1], "out.pcapng");
+    }
 
     #[test]
     fn friendly_error_detects_permission_denied() {
