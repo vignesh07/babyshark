@@ -55,6 +55,7 @@ fn main() -> Result<()> {
     }
 
     if let Some(iface) = args.live {
+        babyshark::live::tshark_live_preflight(&iface)?;
         let rx = babyshark::live::spawn_live_capture_tshark_fields(iface.clone())?;
         let mut app = babyshark::ui::App::new(
             &format!("live:{iface}"),

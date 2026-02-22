@@ -119,6 +119,79 @@ fn epoch_to_ts(epoch: f64) -> DateTime<Utc> {
         .unwrap_or_else(|| DateTime::<Utc>::from_timestamp(0, 0).unwrap())
 }
 
+fn friendly_live_capture_error(stderr: &str) -> Option<String> {
+    let s = stderr.to_lowercase();
+
+    // Common permission problems across platforms.
+    if s.contains("permission denied")
+        || s.contains("operation not permitted")
+        || s.contains("you don't have permission")
+        || s.contains("could not open capture device")
+        || s.contains("cap_net_raw")
+        || s.contains("cap_net_admin")
+    {
+        return Some(
+            "tshark failed to start live capture (likely permissions). Try: run with sudo, or install Wireshark/tshark with capture permissions (dumpcap).".to_string(),
+        );
+    }
+
+    if s.contains("no such device") || s.contains("unknown device") {
+        return Some(
+            "unknown capture interface. Run with --list-ifaces to see available interfaces."
+                .to_string(),
+        );
+    }
+
+    None
+}
+
+pub fn tshark_live_preflight(iface: &str) -> Result<()> {
+    // Attempt a very small capture to surface permission/config errors early.
+    let out = Command::new("tshark")
+        .args([
+            "-n",
+            "-i",
+            iface,
+            "-c",
+            "1",
+            "-a",
+            "duration:1",
+            "-T",
+            "fields",
+            "-E",
+            "separator=	",
+            "-E",
+            "occurrence=f",
+            "-E",
+            "header=n",
+            "-e",
+            "frame.time_epoch",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .context("failed to execute tshark for live capture preflight")?;
+
+    if out.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    if let Some(msg) = friendly_live_capture_error(&stderr) {
+        return Err(anyhow!(
+            "{msg}
+
+Raw tshark error:
+{stderr}"
+        ));
+    }
+
+    Err(anyhow!(
+        "tshark live capture preflight failed:
+{}",
+        stderr.trim()
+    ))
+}
 /// Parse a single `tshark -T fields` line (tab-separated), best-effort.
 ///
 /// Field order (see `spawn_live_capture_tshark_fields`):
@@ -307,6 +380,19 @@ pub fn spawn_live_capture_tshark_fields(iface: String) -> Result<Receiver<Packet
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn friendly_error_detects_permission_denied() {
+        let msg = friendly_live_capture_error("Permission denied").unwrap();
+        assert!(msg.to_lowercase().contains("permissions"));
+    }
+
+    #[test]
+    fn friendly_error_detects_unknown_device() {
+        let msg = friendly_live_capture_error("No such device").unwrap();
+        assert!(msg.to_lowercase().contains("--list-ifaces"));
+    }
+
     use super::*;
 
     #[test]
