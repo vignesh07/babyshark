@@ -194,17 +194,20 @@ Raw tshark error:
 }
 /// Parse a single `tshark -T fields` line (tab-separated), best-effort.
 ///
-/// Field order (see `spawn_live_capture_tshark_fields`):
+/// Field order (see `build_tshark_live_args`):
 /// frame.time_epoch, frame.len,
 /// ip.src, ip.dst, ipv6.src, ipv6.dst,
 /// tcp.srcport, tcp.dstport, udp.srcport, udp.dstport,
 /// _ws.col.Protocol,
-/// tcp.flags
+/// tcp.flags,
+/// dns.qry.name, dns.flags.rcode, dns.a, dns.aaaa,
+/// tls.handshake.extensions_server_name, http.host
 pub fn parse_tshark_fields_line(line: &str) -> Option<PacketRow> {
     let parts: Vec<&str> = line
         .trim_end_matches(&['\n', '\r'][..])
         .split('\t')
         .collect();
+    // Keep backward-compatible with older line formats, but we expect at least the base columns.
     if parts.len() < 12 {
         return None;
     }
@@ -249,6 +252,11 @@ pub fn parse_tshark_fields_line(line: &str) -> Option<PacketRow> {
 
     let ts = epoch_to_ts(epoch);
 
+    // Extended live fields (indices based on `build_tshark_live_args`).
+    let dns_qname = parts.get(12).map(|s| s.trim()).filter(|s| !s.is_empty());
+    let tls_sni = parts.get(16).map(|s| s.trim()).filter(|s| !s.is_empty());
+    let http_host = parts.get(17).map(|s| s.trim()).filter(|s| !s.is_empty());
+
     let mut row = PacketRow {
         index: 0, // assigned by UI when appended
         ts,
@@ -265,9 +273,9 @@ pub fn parse_tshark_fields_line(line: &str) -> Option<PacketRow> {
         tcp_ack: None,
         tcp_flags,
         payload: Vec::new(),
-        dns_qname: None,
-        http_host: None,
-        tls_sni: None,
+        dns_qname: dns_qname.map(|s| s.to_string()),
+        http_host: http_host.map(|s| s.to_string()),
+        tls_sni: tls_sni.map(|s| s.to_string()),
     };
 
     if let (Some(src), Some(dst), Some(proto), Some(sp), Some(dp)) =
@@ -360,6 +368,19 @@ fn build_tshark_live_args(
             "_ws.col.Protocol",
             "-e",
             "tcp.flags",
+            // Live-mode hostname extraction (for Domains/Explain parity).
+            "-e",
+            "dns.qry.name",
+            "-e",
+            "dns.flags.rcode",
+            "-e",
+            "dns.a",
+            "-e",
+            "dns.aaaa",
+            "-e",
+            "tls.handshake.extensions_server_name",
+            "-e",
+            "http.host",
         ]
         .iter()
         .map(|s| s.to_string()),
@@ -427,7 +448,12 @@ pub fn spawn_live_capture_tshark_fields(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::pcap::L4Proto;
+
+    use super::{
+        build_tshark_live_args, friendly_live_capture_error, parse_tshark_fields_line,
+        parse_tshark_ifaces_output, parse_tshark_version_output,
+    };
 
     #[test]
     fn build_tshark_live_args_includes_write_pcap() {
@@ -447,8 +473,6 @@ mod tests {
         let msg = friendly_live_capture_error("No such device").unwrap();
         assert!(msg.to_lowercase().contains("--list-ifaces"));
     }
-
-    use super::*;
 
     #[test]
     fn parse_version_first_line() {
@@ -478,8 +502,8 @@ Copyright ...
 
     #[test]
     fn parse_tshark_fields_line_tcp() {
-        // epoch, len, ip.src, ip.dst, ipv6.src, ipv6.dst, tcp sp/dp, udp sp/dp, proto col, flags
-        let line = "1700000000.123	60	1.2.3.4	5.6.7.8			12345	443			TCP	0x0012";
+        // epoch, len, ip.src, ip.dst, ipv6.src, ipv6.dst, tcp sp/dp, udp sp/dp, proto col, flags, dns, sni, host
+        let line = "1700000000.123	60	1.2.3.4	5.6.7.8			12345	443			TCP	0x0012						";
         let row = parse_tshark_fields_line(line).unwrap();
         assert_eq!(row.len, 60);
         assert_eq!(row.proto, Some(L4Proto::Tcp));
@@ -491,11 +515,21 @@ Copyright ...
 
     #[test]
     fn parse_tshark_fields_line_udp_ipv6() {
-        // columns: epoch, len, ip.src, ip.dst, ipv6.src, ipv6.dst, tcp sp/dp, udp sp/dp, proto col, flags
-        let line = "1700000000.000	42			2001:db8::1	2001:db8::2			53	5353	UDP	";
+        // columns: epoch, len, ip.src, ip.dst, ipv6.src, ipv6.dst, tcp sp/dp, udp sp/dp, proto col, flags, dns, sni, host
+        let line = "1700000000.000	42			2001:db8::1	2001:db8::2			53	5353	UDP						";
         let row = parse_tshark_fields_line(line).unwrap();
         assert_eq!(row.proto, Some(L4Proto::Udp));
         assert_eq!(row.src_port, Some(53));
         assert_eq!(row.dst_port, Some(5353));
+    }
+
+    #[test]
+    fn parse_tshark_fields_line_hostname_hints() {
+        // Ensure we populate PacketRow.{dns_qname,tls_sni,http_host} from tshark fields (live mode).
+        let line = "1700000001.000	74	10.0.0.2	1.1.1.1			55555	443			TLS	0x0018	example.com	0			www.example.org	example.com";
+        let row = parse_tshark_fields_line(line).unwrap();
+        assert_eq!(row.dns_qname.as_deref(), Some("example.com"));
+        assert_eq!(row.tls_sni.as_deref(), Some("www.example.org"));
+        assert_eq!(row.http_host.as_deref(), Some("example.com"));
     }
 }

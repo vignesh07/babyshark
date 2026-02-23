@@ -19,18 +19,19 @@ This is the concrete work list to get to a “PCAPs for humans” launch.
   - Domain extraction from HTTP Host + TLS SNI (offline, best-effort)
   - Drilldown: domain → subset flows (via resolved IPs)
 - Explain modal (`?`) for selected flow: plain-English summary + next steps (best-effort)
+- Live mode: tshark fields populate `PacketRow` hostname hints (`dns.qry.name`, TLS SNI, HTTP Host)
 
 ---
 
 ## P0 — Must-have before launch (queue)
 
 ### A) Live-mode parity for Domains + Explain (highest priority)
-1. **Extract hostnames in live mode via tshark fields** (payload bytes aren’t available today):
+1. **(shipped)** Extract hostnames in live mode via tshark fields (payload bytes aren’t available today):
    - DNS: `dns.qry.name`, `dns.flags.rcode`, and if possible `dns.a`, `dns.aaaa`
    - TLS: `tls.handshake.extensions_server_name`
    - HTTP: `http.host`
-2. Update live parsing to populate `PacketRow.{dns_qname,http_host,tls_sni}` from tshark columns.
-3. Add unit tests for parsing the new live TSV line formats.
+2. **(shipped)** Update live parsing to populate `PacketRow.{dns_qname,http_host,tls_sni}` from tshark columns.
+3. **(shipped)** Add unit tests for parsing the new live TSV line formats.
 4. Confirm: Domains view shows hostnames during `--live` capture.
 
 ### B) Overview completeness
