@@ -118,6 +118,9 @@ pub struct App {
 
     pub view: View,
 
+    // navigation
+    pub flows_back_view: View,
+
     // overview dashboard selection
     pub overview_selected_row: usize,
 
@@ -176,6 +179,7 @@ impl App {
             rows,
             flows,
             view: View::Overview,
+            flows_back_view: View::Overview,
             overview_selected_row: 0,
             selected_row: 0,
             visible_flow_indices: Vec::new(),
@@ -1941,7 +1945,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
 
                 match key.code {
                     KeyCode::Char('o') => { app.view = View::Overview; },
-                    KeyCode::Char('F') => { app.view = View::Flows; },
+                    KeyCode::Char('F') => { app.flows_back_view = app.view; app.view = View::Flows; },
                     KeyCode::Char('W') => { app.view = View::Weird; },
                     KeyCode::Char('D') => { app.view = View::Domains; },
                     KeyCode::Char('?') => {
@@ -2030,7 +2034,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     KeyCode::Esc => {
                         // Esc is the "go back" key.
                         if app.view == View::Flows {
-                            app.view = View::Overview;
+                            app.view = app.flows_back_view;
                         } else if app.view == View::Weird {
                             app.view = View::Overview;
                         } else if app.view == View::Domains {
@@ -2050,6 +2054,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                 subset.dedup();
                                 app.flow_subset = Some(subset);
                                 app.subset_label = Some(format!("weird:{}", it.title));
+                                app.flows_back_view = View::Weird;
                                 app.view = View::Flows;
                                 app.selected_row = 0;
                                 app.apply_filter();
@@ -2067,6 +2072,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                 subset.dedup();
                                 app.flow_subset = Some(subset);
                                 app.subset_label = Some(format!("domain:{}", it.domain));
+                                app.flows_back_view = View::Domains;
                                 app.view = View::Flows;
                                 app.selected_row = 0;
                                 app.apply_filter();
@@ -2082,6 +2088,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                 if let Some(action) = rows.get(sel).and_then(|r| r.action.clone()) {
                                     match action {
                                         OverviewAction::GoFlows => {
+                                            app.flows_back_view = View::Overview;
                                             app.view = View::Flows;
                                         }
                                         OverviewAction::GoWeird => {
@@ -2091,6 +2098,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                             app.flow_subset = None;
                                             app.subset_label = None;
                                             app.filter.query = format!(":{p}");
+                                            app.flows_back_view = View::Overview;
                                             app.view = View::Flows;
                                             app.selected_row = 0;
                                             app.apply_filter();
@@ -2100,6 +2108,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                             app.flow_subset = None;
                                             app.subset_label = None;
                                             app.filter.query = ip.to_string();
+                                            app.flows_back_view = View::Overview;
                                             app.view = View::Flows;
                                             app.selected_row = 0;
                                             app.apply_filter();
@@ -2108,6 +2117,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                         OverviewAction::FlowIndex(flow_i) => {
                                             app.flow_subset = None;
                                             app.subset_label = None;
+                                            app.flows_back_view = View::Overview;
                                             app.view = View::Flows;
                                             app.apply_filter();
                                             if let Some(pos) = app
