@@ -2,5 +2,9 @@
 /babyshark
 /dist
 
+# Local planning files (keep out of git)
+/LAUNCH_TASKS.md
+/TODO-BEGINNER-NAV.md
+
 # Rust
 /rust/target
