@@ -28,7 +28,12 @@ pub struct OverviewSummary {
     pub pps_buckets: Vec<u32>,
 
     pub top_ports: Vec<(u16, HostCounts)>,
+
+    /// Sorted by total bytes (desc).
     pub top_hosts: Vec<(IpAddr, HostCounts)>,
+    /// Sorted by total packets (desc).
+    pub top_hosts_by_packets: Vec<(IpAddr, HostCounts)>,
+
     pub top_flows: Vec<FlowStats>,
 }
 
@@ -129,12 +134,18 @@ pub fn build_overview(rows: &[PacketRow], flows: &FlowIndex, limit: usize) -> Ov
     out.top_ports.sort_by(|a, b| b.1.bytes.cmp(&a.1.bytes).then_with(|| b.1.packets.cmp(&a.1.packets)));
     out.top_ports.truncate(limit);
 
-    out.top_hosts = hosts
+    let mut top_hosts: Vec<(IpAddr, HostCounts)> = hosts
         .into_iter()
         .filter_map(|(k, v)| u64_to_ip(k).map(|ip| (ip, v)))
         .collect();
-    out.top_hosts.sort_by(|a, b| b.1.bytes.cmp(&a.1.bytes).then_with(|| b.1.packets.cmp(&a.1.packets)));
+
+    top_hosts.sort_by(|a, b| b.1.bytes.cmp(&a.1.bytes).then_with(|| b.1.packets.cmp(&a.1.packets)));
+    out.top_hosts = top_hosts.clone();
     out.top_hosts.truncate(limit);
+
+    top_hosts.sort_by(|a, b| b.1.packets.cmp(&a.1.packets).then_with(|| b.1.bytes.cmp(&a.1.bytes)));
+    out.top_hosts_by_packets = top_hosts;
+    out.top_hosts_by_packets.truncate(limit);
 
     out.top_flows = flows.flows.iter().take(limit).cloned().collect();
 
@@ -198,6 +209,9 @@ mod tests {
         // top flows should include the single flow
         assert_eq!(ov.top_flows.len(), 1);
         assert_eq!(ov.top_flows[0].key.proto, L4Proto::Tcp);
+
+        // New: top talkers by packets should be present (even if order is trivial here).
+        assert!(!ov.top_hosts_by_packets.is_empty());
     }
 
     #[test]

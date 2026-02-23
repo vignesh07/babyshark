@@ -910,6 +910,12 @@ fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
         .first()
         .map(|(ip, c)| format!("{ip} ({:.1}KB)", (c.bytes as f64) / 1024.0))
         .unwrap_or_else(|| "—".to_string());
+
+    let top_talker_by_packets = ov
+        .top_hosts_by_packets
+        .first()
+        .map(|(ip, c)| format!("{ip} ({} pkts)", c.packets))
+        .unwrap_or_else(|| "—".to_string());
     let top_flow = ov
         .top_flows
         .first()
@@ -919,7 +925,7 @@ fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
     rows.push(OverviewRow {
         label: Line::from(Span::styled(
             format!(
-                "Packets: {}   Flows: {}   Top talker: {top_talker}",
+                "Packets: {}   Flows: {}   Top talker: {top_talker}   Top talker (pkts): {top_talker_by_packets}",
                 ov.total_packets,
                 app.flows.flows.len()
             ),
