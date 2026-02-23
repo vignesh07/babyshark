@@ -1502,16 +1502,22 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             .map(|ip| ip.to_string())
                             .collect();
 
-                        let (ip_title, ips) = if !observed.is_empty() {
-                            ("Observed IPs (from flows):", observed.join("\n"))
+                        let (ip_title, ip_lines): (&str, Vec<String>) = if !observed.is_empty() {
+                            ("Observed IPs (from flows):", observed)
                         } else if !dns.is_empty() {
-                            ("Resolved IPs (DNS A/AAAA):", dns.join("\n"))
+                            ("Resolved IPs (DNS A/AAAA):", dns)
                         } else {
-                            ("IP hints:", "(no IPs observed yet — likely DoH/DoT or cached DNS)".to_string())
+                            (
+                                "IP hints:",
+                                vec![
+                                    "(no IPs observed yet — likely DoH/DoT or cached DNS)".to_string(),
+                                ],
+                            )
                         };
-                        vec![
+
+                        let mut out: Vec<Line> = vec![
                             Line::from(Span::styled(
-                                &it.domain,
+                                it.domain.clone(),
                                 Style::default().fg(c_accent()).add_modifier(Modifier::BOLD),
                             )),
                             Line::from(Span::raw("")),
@@ -1527,13 +1533,19 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                 ip_title,
                                 Style::default().fg(c_muted()).add_modifier(Modifier::BOLD),
                             )),
-                            Line::from(Span::styled(ips, Style::default().fg(c_text()))),
-                            Line::from(Span::raw("")),
-                            Line::from(Span::styled(
-                                "Tip: Enter applies a subset filter (prefers observed IPs; DNS IPs if available).",
-                                Style::default().fg(c_muted()),
-                            )),
-                        ]
+                        ];
+
+                        for l in ip_lines {
+                            out.push(Line::from(Span::styled(l, Style::default().fg(c_text()))));
+                        }
+
+                        out.push(Line::from(Span::raw("")));
+                        out.push(Line::from(Span::styled(
+                            "Tip: Enter applies a subset filter (prefers observed IPs; DNS IPs if available).",
+                            Style::default().fg(c_muted()),
+                        )));
+
+                        out
                     } else {
                         vec![Line::from(Span::styled(
                             "No domains found.",
