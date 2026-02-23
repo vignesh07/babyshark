@@ -2028,11 +2028,14 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         }
                     }
                     KeyCode::Esc => {
-                        if app.view == View::Weird {
+                        // Esc is the "go back" key.
+                        if app.view == View::Flows {
+                            app.view = View::Overview;
+                        } else if app.view == View::Weird {
                             app.view = View::Overview;
                         } else if app.view == View::Domains {
                             app.view = View::Overview;
-                        } else if app.view != View::Flows {
+                        } else {
                             app.back();
                         }
                     }
