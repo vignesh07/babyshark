@@ -31,6 +31,7 @@ This is the concrete work list to get to a “PCAPs for humans” launch.
 - Domains: sorted by top domains by connections (flow count)
 - Domains: optional sort by bytes (press `s` in Domains view)
 - Domains: optional sort by DNS failures (press `s` to cycle sort)
+- Glossary: press `g` to open definitions (TCP flags, DNS failures, TCP/UDP/QUIC)
 
 ---
 
@@ -63,7 +64,7 @@ This is the concrete work list to get to a “PCAPs for humans” launch.
 3. **(shipped)** Domains with most failures (DNS + handshake failures if we can infer).
 
 ### E) Explain/Glossary completeness
-1. Glossary popover/inline for:
+1. **(shipped)** Glossary popover/inline for:
    - SYN/ACK/FIN/RST
    - DNS NXDOMAIN/SERVFAIL
    - TCP vs UDP vs QUIC

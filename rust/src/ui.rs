@@ -95,6 +95,7 @@ pub enum Modal {
     Bookmark,
     StreamSearch,
     Explain,
+    Glossary,
 }
 
 pub struct App {
@@ -478,6 +479,9 @@ impl App {
             Modal::Explain => {
                 // no-op; explain modal has nothing to apply
             }
+            Modal::Glossary => {
+                // read-only modal
+            }
             Modal::None => {}
         }
         self.modal = Modal::None;
@@ -511,6 +515,9 @@ impl App {
             Modal::Explain => {
                 // read-only modal
             }
+            Modal::Glossary => {
+                // read-only modal
+            }
             Modal::None => {}
         }
     }
@@ -534,6 +541,9 @@ impl App {
             Modal::Explain => {
                 // read-only modal
             }
+            Modal::Glossary => {
+                // read-only modal
+            }
             Modal::None => {}
         }
     }
@@ -554,6 +564,9 @@ impl App {
                 self.stream_scroll = 0;
             }
             Modal::Explain => {
+                // read-only modal
+            }
+            Modal::Glossary => {
                 // read-only modal
             }
             Modal::None => {}
@@ -1762,6 +1775,11 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     Span::raw(UI_SPACER),
                     Span::styled("Esc close", Style::default().fg(c_muted())),
                 ]),
+                Modal::Glossary => Line::from(vec![
+                    Span::styled("GLOSSARY", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
+                    Span::raw(UI_SPACER),
+                    Span::styled("Esc close", Style::default().fg(c_muted())),
+                ]),
                 Modal::None => match app.view {
                     View::Overview => Line::from(vec![
                         Span::styled("F", Style::default().fg(Color::Green)),
@@ -1832,6 +1850,8 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         Span::raw(" switch  "),
                         Span::styled("↑/↓", Style::default().fg(Color::Green)),
                         Span::raw(" scroll  "),
+                        Span::styled("g", Style::default().fg(Color::Green)),
+                        Span::raw(" glossary  "),
                         Span::styled("Esc", Style::default().fg(Color::Green)),
                         Span::raw(" back/clear  "),
                         Span::styled("q", Style::default().fg(Color::Green)),
@@ -1864,6 +1884,10 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                 Modal::Explain => {
                     let lines = build_explain_lines(app);
                     render_explain_modal(f, size, &lines);
+                }
+                Modal::Glossary => {
+                    let lines = build_glossary_lines();
+                    render_glossary_modal(f, size, &lines);
                 }
                 Modal::None => {}
             }
@@ -1906,6 +1930,9 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         if matches!(app.view, View::Flows | View::Packets | View::Stream) {
                             app.modal = Modal::Explain;
                         }
+                    }
+                    KeyCode::Char('g') => {
+                        app.modal = Modal::Glossary;
                     }
                     KeyCode::Char('q') => return Ok(()),
                     KeyCode::Char('/') => {
@@ -2226,6 +2253,19 @@ mod tests {
         assert_eq!(App::compute_live_drop(10, 10), 0);
         assert_eq!(App::compute_live_drop(9, 10), 0);
         assert_eq!(App::compute_live_drop(11, 10), 1);
+    }
+
+    #[test]
+    fn glossary_contains_core_terms() {
+        let lines = build_glossary_lines();
+        let all = lines
+            .iter()
+            .map(|l| l.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(all.contains("SYN"));
+        assert!(all.contains("NXDOMAIN"));
+        assert!(all.contains("QUIC"));
     }
 
     #[test]
@@ -2854,6 +2894,101 @@ fn render_explain_modal(
     let block = Block::default()
         .borders(Borders::ALL)
         .title("Explain")
+        .style(Style::default().bg(c_panel()).fg(c_text()));
+    f.render_widget(block, area);
+
+    let p = Paragraph::new(lines.to_vec())
+        .wrap(Wrap { trim: true })
+        .style(Style::default().bg(c_panel()).fg(c_text()));
+    f.render_widget(p, inner);
+}
+
+fn build_glossary_lines() -> Vec<Line<'static>> {
+    let mut out: Vec<Line<'static>> = Vec::new();
+
+    out.push(Line::from(Span::styled(
+        "Glossary",
+        Style::default().fg(c_accent()).add_modifier(Modifier::BOLD),
+    )));
+    out.push(Line::from(Span::raw("")));
+
+    out.push(Line::from(Span::styled(
+        "TCP flags",
+        Style::default().fg(c_muted()).add_modifier(Modifier::BOLD),
+    )));
+    out.push(Line::from(vec![
+        Span::styled("• SYN: ", Style::default().fg(c_muted())),
+        Span::styled("Start a TCP connection.", Style::default().fg(c_text())),
+    ]));
+    out.push(Line::from(vec![
+        Span::styled("• ACK: ", Style::default().fg(c_muted())),
+        Span::styled("Acknowledges received bytes.", Style::default().fg(c_text())),
+    ]));
+    out.push(Line::from(vec![
+        Span::styled("• FIN: ", Style::default().fg(c_muted())),
+        Span::styled("Graceful close.", Style::default().fg(c_text())),
+    ]));
+    out.push(Line::from(vec![
+        Span::styled("• RST: ", Style::default().fg(c_muted())),
+        Span::styled("Abort / refused connection.", Style::default().fg(c_text())),
+    ]));
+
+    out.push(Line::from(Span::raw("")));
+    out.push(Line::from(Span::styled(
+        "DNS failure codes",
+        Style::default().fg(c_muted()).add_modifier(Modifier::BOLD),
+    )));
+    out.push(Line::from(vec![
+        Span::styled("• NXDOMAIN: ", Style::default().fg(c_muted())),
+        Span::styled("Name does not exist.", Style::default().fg(c_text())),
+    ]));
+    out.push(Line::from(vec![
+        Span::styled("• SERVFAIL: ", Style::default().fg(c_muted())),
+        Span::styled("Resolver error.", Style::default().fg(c_text())),
+    ]));
+
+    out.push(Line::from(Span::raw("")));
+    out.push(Line::from(Span::styled(
+        "Protocols",
+        Style::default().fg(c_muted()).add_modifier(Modifier::BOLD),
+    )));
+    out.push(Line::from(vec![
+        Span::styled("• TCP: ", Style::default().fg(c_muted())),
+        Span::styled("Reliable, ordered stream (retransmits on loss).", Style::default().fg(c_text())),
+    ]));
+    out.push(Line::from(vec![
+        Span::styled("• UDP: ", Style::default().fg(c_muted())),
+        Span::styled("Unreliable datagrams (no built-in retransmit).", Style::default().fg(c_text())),
+    ]));
+    out.push(Line::from(vec![
+        Span::styled("• QUIC: ", Style::default().fg(c_muted())),
+        Span::styled("Reliable transport over UDP (used by HTTP/3).", Style::default().fg(c_text())),
+    ]));
+
+    out.push(Line::from(Span::raw("")));
+    out.push(Line::from(Span::styled(
+        "Esc to close",
+        Style::default().fg(c_muted()),
+    )));
+
+    out
+}
+
+fn render_glossary_modal(
+    f: &mut ratatui::Frame,
+    size: ratatui::layout::Rect,
+    lines: &[Line<'static>],
+) {
+    let area = centered_rect(80, 60, size);
+    f.render_widget(Clear, area);
+    let inner = area.inner(Margin {
+        horizontal: 2,
+        vertical: 1,
+    });
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title("Glossary")
         .style(Style::default().bg(c_panel()).fg(c_text()));
     f.render_widget(block, area);
 
