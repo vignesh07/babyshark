@@ -76,6 +76,7 @@ pub enum View {
     Overview,
     Flows,
     Weird,
+    Domains,
     Packets,
     Stream,
 }
@@ -120,8 +121,13 @@ pub struct App {
 
     // weird-mode (detector) state
     pub weird_selected_row: usize,
-    pub weird_flow_subset: Option<Vec<usize>>, // flow indices (into flows.flows)
-    pub weird_active_label: Option<String>,
+
+    // domains-mode state
+    pub domains_selected_row: usize,
+
+    // active flow subset (used by Weird + Domains drilldown)
+    pub flow_subset: Option<Vec<usize>>, // flow indices (into flows.flows)
+    pub subset_label: Option<String>,
 
     // filter
     pub filter: FlowFilter,
@@ -163,8 +169,9 @@ impl App {
             selected_row: 0,
             visible_flow_indices: Vec::new(),
             weird_selected_row: 0,
-            weird_flow_subset: None,
-            weird_active_label: None,
+            domains_selected_row: 0,
+            flow_subset: None,
+            subset_label: None,
             filter: FlowFilter::default(),
             bookmark_note: String::new(),
             modal: Modal::None,
@@ -190,7 +197,7 @@ impl App {
             .collect();
 
         // Optional additional subset restriction (used by Weird-mode detectors).
-        if let Some(subset) = &self.weird_flow_subset {
+        if let Some(subset) = &self.flow_subset {
             // `subset` is stored sorted; use binary_search for cheap intersection.
             indices.retain(|i| subset.binary_search(i).is_ok());
         }
@@ -242,6 +249,7 @@ impl App {
         self.view = match self.view {
             View::Flows => View::Flows,
             View::Weird => View::Flows,
+            View::Domains => View::Flows,
             View::Packets => View::Flows,
             View::Stream => View::Packets,
             View::Overview => View::Overview,
@@ -1089,6 +1097,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                 View::Overview => "Overview",
                 View::Flows => "Flows",
                 View::Weird => "Weird stuff",
+                View::Domains => "Domains",
                 View::Packets => "Packets",
                 View::Stream => "Follow Stream",
             };
@@ -1103,8 +1112,8 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     app.filter.query.trim()
                 }
             );
-            if let Some(lbl) = &app.weird_active_label {
-                filter_badge.push_str(&format!("  weird={lbl}"));
+            if let Some(lbl) = &app.subset_label {
+                filter_badge.push_str(&format!("  subset={lbl}"));
             }
 
             let header = Paragraph::new(Line::from(vec![
@@ -1264,6 +1273,122 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     .wrap(Wrap { trim: true });
 
                     f.render_widget(expl, body_chunks[1]);
+                }
+
+                View::Domains => {
+                    use crate::domains::build_domains_summary;
+
+                    let dom = build_domains_summary(&app.rows, &app.flows);
+
+                    let items: Vec<ListItem> = dom
+                        .items
+                        .iter()
+                        .enumerate()
+                        .map(|(i, it)| {
+                            let line = Line::from(vec![
+                                Span::styled(format!("{:>2} ", i + 1), Style::default().fg(c_muted())),
+                                Span::styled(
+                                    format!("{:<28}", it.domain),
+                                    Style::default().fg(c_text()).add_modifier(Modifier::BOLD),
+                                ),
+                                Span::raw(UI_SPACER),
+                                Span::styled(
+                                    format!(
+                                        "q={} r={} fail={} ips={}",
+                                        it.stats.queries,
+                                        it.stats.responses,
+                                        it.stats.failures,
+                                        it.stats.ips.len()
+                                    ),
+                                    Style::default().fg(if it.stats.failures > 0 {
+                                        Color::Rgb(255, 215, 0)
+                                    } else {
+                                        c_muted()
+                                    }),
+                                ),
+                            ]);
+                            ListItem::new(line)
+                        })
+                        .collect();
+
+                    let mut dom_state = ListState::default();
+                    if !dom.items.is_empty() {
+                        app.domains_selected_row = app.domains_selected_row.min(dom.items.len() - 1);
+                        dom_state.select(Some(app.domains_selected_row));
+                    }
+
+                    let list = List::new(items)
+                        .block(
+                            Block::default()
+                                .borders(Borders::ALL)
+                                .title("Domains (DNS only)  (Enter show flows, c clear, Esc back)")
+                                .style(Style::default().bg(c_panel())),
+                        )
+                        .highlight_style(
+                            Style::default()
+                                .bg(c_highlight_bg())
+                                .fg(c_text())
+                                .add_modifier(Modifier::BOLD),
+                        )
+                        .highlight_symbol("❯ ");
+
+                    f.render_stateful_widget(list, body_chunks[0], &mut dom_state);
+
+                    let selected = dom.items.get(app.domains_selected_row);
+                    let right = if let Some(it) = selected {
+                        let ip_list = it
+                            .stats
+                            .ips
+                            .iter()
+                            .take(12)
+                            .map(|ip| ip.to_string())
+                            .collect::<Vec<_>>();
+                        let ips = if ip_list.is_empty() {
+                            "(no IPs parsed yet)".to_string()
+                        } else {
+                            ip_list.join("\n")
+                        };
+                        vec![
+                            Line::from(Span::styled(
+                                &it.domain,
+                                Style::default().fg(c_accent()).add_modifier(Modifier::BOLD),
+                            )),
+                            Line::from(Span::raw("")),
+                            Line::from(Span::styled(
+                                format!(
+                                    "queries={} responses={} failures={}",
+                                    it.stats.queries, it.stats.responses, it.stats.failures
+                                ),
+                                Style::default().fg(c_text()),
+                            )),
+                            Line::from(Span::raw("")),
+                            Line::from(Span::styled(
+                                "Resolved IPs (A/AAAA):",
+                                Style::default().fg(c_muted()).add_modifier(Modifier::BOLD),
+                            )),
+                            Line::from(Span::styled(ips, Style::default().fg(c_text()))),
+                            Line::from(Span::raw("")),
+                            Line::from(Span::styled(
+                                "Tip: Enter applies a subset filter (by resolved IPs if available).",
+                                Style::default().fg(c_muted()),
+                            )),
+                        ]
+                    } else {
+                        vec![Line::from(Span::styled(
+                            "No domains found.",
+                            Style::default().fg(c_muted()),
+                        ))]
+                    };
+
+                    let p = Paragraph::new(right)
+                        .block(
+                            Block::default()
+                                .borders(Borders::ALL)
+                                .title("Domain details")
+                                .style(Style::default().bg(c_panel())),
+                        )
+                        .wrap(Wrap { trim: true });
+                    f.render_widget(p, body_chunks[1]);
                 }
 
                 View::Flows => {
@@ -1522,10 +1647,24 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         Span::raw(" flows  "),
                         Span::styled("W", Style::default().fg(Color::Green)),
                         Span::raw(" weird  "),
+                        Span::styled("D", Style::default().fg(Color::Green)),
+                        Span::raw(" domains  "),
                         Span::styled("q", Style::default().fg(Color::Green)),
                         Span::raw(" quit"),
                     ]),
                     View::Weird => Line::from(vec![
+                        Span::styled("↑/↓", Style::default().fg(Color::Green)),
+                        Span::raw(" move  "),
+                        Span::styled("Enter", Style::default().fg(Color::Green)),
+                        Span::raw(" show flows  "),
+                        Span::styled("c", Style::default().fg(Color::Green)),
+                        Span::raw(" clear  "),
+                        Span::styled("Esc", Style::default().fg(Color::Green)),
+                        Span::raw(" back  "),
+                        Span::styled("q", Style::default().fg(Color::Green)),
+                        Span::raw(" quit"),
+                    ]),
+                    View::Domains => Line::from(vec![
                         Span::styled("↑/↓", Style::default().fg(Color::Green)),
                         Span::raw(" move  "),
                         Span::styled("Enter", Style::default().fg(Color::Green)),
@@ -1637,6 +1776,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     KeyCode::Char('o') => { app.view = View::Overview; },
                     KeyCode::Char('F') => { app.view = View::Flows; },
                     KeyCode::Char('W') => { app.view = View::Weird; },
+                    KeyCode::Char('D') => { app.view = View::Domains; },
                     KeyCode::Char('q') => return Ok(()),
                     KeyCode::Char('/') => {
                         if app.view == View::Flows {
@@ -1696,14 +1836,16 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         }
                     }
                     KeyCode::Char('c') => {
-                        if matches!(app.view, View::Flows | View::Weird) {
-                            app.weird_flow_subset = None;
-                            app.weird_active_label = None;
+                        if matches!(app.view, View::Flows | View::Weird | View::Domains) {
+                            app.flow_subset = None;
+                            app.subset_label = None;
                             app.apply_filter();
                         }
                     }
                     KeyCode::Esc => {
                         if app.view == View::Weird {
+                            app.view = View::Overview;
+                        } else if app.view == View::Domains {
                             app.view = View::Overview;
                         } else if app.view != View::Flows {
                             app.back();
@@ -1718,8 +1860,21 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                 let mut subset = it.flow_indices.clone();
                                 subset.sort_unstable();
                                 subset.dedup();
-                                app.weird_flow_subset = Some(subset);
-                                app.weird_active_label = Some(it.title.clone());
+                                app.flow_subset = Some(subset);
+                                app.subset_label = Some(format!("weird:{}", it.title));
+                                app.view = View::Flows;
+                                app.selected_row = 0;
+                                app.apply_filter();
+                                flow_state.select(Some(app.selected_row));
+                            }
+                        } else if app.view == View::Domains {
+                            let dom = crate::domains::build_domains_summary(&app.rows, &app.flows);
+                            if let Some(it) = dom.items.get(app.domains_selected_row) {
+                                let mut subset = it.flow_indices.clone();
+                                subset.sort_unstable();
+                                subset.dedup();
+                                app.flow_subset = Some(subset);
+                                app.subset_label = Some(format!("domain:{}", it.domain));
                                 app.view = View::Flows;
                                 app.selected_row = 0;
                                 app.apply_filter();
@@ -1741,8 +1896,8 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                             app.view = View::Weird;
                                         }
                                         OverviewAction::Port(p) => {
-                                            app.weird_flow_subset = None;
-                                            app.weird_active_label = None;
+                                            app.flow_subset = None;
+                                            app.subset_label = None;
                                             app.filter.query = format!(":{p}");
                                             app.view = View::Flows;
                                             app.selected_row = 0;
@@ -1750,8 +1905,8 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                             flow_state.select(Some(app.selected_row));
                                         }
                                         OverviewAction::Host(ip) => {
-                                            app.weird_flow_subset = None;
-                                            app.weird_active_label = None;
+                                            app.flow_subset = None;
+                                            app.subset_label = None;
                                             app.filter.query = ip.to_string();
                                             app.view = View::Flows;
                                             app.selected_row = 0;
@@ -1759,8 +1914,8 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                             flow_state.select(Some(app.selected_row));
                                         }
                                         OverviewAction::FlowIndex(flow_i) => {
-                                            app.weird_flow_subset = None;
-                                            app.weird_active_label = None;
+                                            app.flow_subset = None;
+                                            app.subset_label = None;
                                             app.view = View::Flows;
                                             app.apply_filter();
                                             if let Some(pos) = app
@@ -1805,6 +1960,9 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         View::Weird => {
                             app.weird_selected_row = app.weird_selected_row.saturating_add(1);
                         }
+                        View::Domains => {
+                            app.domains_selected_row = app.domains_selected_row.saturating_add(1);
+                        }
                         View::Stream => {
                             app.scroll_down();
                         }
@@ -1820,6 +1978,9 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         }
                         View::Weird => {
                             app.weird_selected_row = app.weird_selected_row.saturating_sub(1);
+                        }
+                        View::Domains => {
+                            app.domains_selected_row = app.domains_selected_row.saturating_sub(1);
                         }
                         View::Stream => {
                             app.scroll_up();
