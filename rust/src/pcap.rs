@@ -74,6 +74,11 @@ pub struct PacketRow {
     pub tcp_ack: Option<u32>,
     pub tcp_flags: Option<u16>,
     pub payload: Vec<u8>,
+
+    // Optional protocol hints extracted from payload (best-effort).
+    pub dns_qname: Option<String>,
+    pub http_host: Option<String>,
+    pub tls_sni: Option<String>,
 }
 
 fn ts_from_duration(d: std::time::Duration) -> DateTime<Utc> {
@@ -99,6 +104,9 @@ fn decode_packet(index: usize, ts: DateTime<Utc>, data: &[u8]) -> PacketRow {
         tcp_ack: None,
         tcp_flags: None,
         payload: Vec::new(),
+        dns_qname: None,
+        http_host: None,
+        tls_sni: None,
     };
 
     if let Ok(sliced) = SlicedPacket::from_ethernet(data) {
@@ -165,6 +173,7 @@ fn decode_packet(index: usize, ts: DateTime<Utc>, data: &[u8]) -> PacketRow {
             row.flow = Some(fk);
         }
 
+        crate::hints::populate_hints(&mut row);
         row.summary = summarize(&row);
         return row;
     }
@@ -233,6 +242,7 @@ fn decode_packet(index: usize, ts: DateTime<Utc>, data: &[u8]) -> PacketRow {
             row.flow = Some(fk);
         }
 
+        crate::hints::populate_hints(&mut row);
         row.summary = summarize(&row);
         return row;
     }

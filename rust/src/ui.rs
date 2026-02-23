@@ -94,6 +94,7 @@ pub enum Modal {
     Filter,
     Bookmark,
     StreamSearch,
+    Explain,
 }
 
 pub struct App {
@@ -463,6 +464,9 @@ impl App {
                     }
                 }
             }
+            Modal::Explain => {
+                // no-op; explain modal has nothing to apply
+            }
             Modal::None => {}
         }
         self.modal = Modal::None;
@@ -493,6 +497,9 @@ impl App {
 
                 self.refresh_stream_match_count();
             }
+            Modal::Explain => {
+                // read-only modal
+            }
             Modal::None => {}
         }
     }
@@ -513,6 +520,9 @@ impl App {
 
                 self.refresh_stream_match_count();
             }
+            Modal::Explain => {
+                // read-only modal
+            }
             Modal::None => {}
         }
     }
@@ -531,6 +541,9 @@ impl App {
                 self.stream_last_match = None;
                 self.stream_match_count = 0;
                 self.stream_scroll = 0;
+            }
+            Modal::Explain => {
+                // read-only modal
             }
             Modal::None => {}
         }
@@ -1659,6 +1672,11 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     Span::raw(UI_SPACER),
                     Span::styled("type query, Enter apply, Esc cancel, Ctrl+u clear", Style::default().fg(c_muted())),
                 ]),
+                Modal::Explain => Line::from(vec![
+                    Span::styled("EXPLAIN", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
+                    Span::raw(UI_SPACER),
+                    Span::styled("Esc close", Style::default().fg(c_muted())),
+                ]),
                 Modal::None => match app.view {
                     View::Overview => Line::from(vec![
                         Span::styled("F", Style::default().fg(Color::Green)),
@@ -1758,6 +1776,10 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         app.stream_last_match.is_some(),
                     );
                 }
+                Modal::Explain => {
+                    let lines = build_explain_lines(app);
+                    render_explain_modal(f, size, &lines);
+                }
                 Modal::None => {}
             }
         })?;
@@ -1795,6 +1817,11 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     KeyCode::Char('F') => { app.view = View::Flows; },
                     KeyCode::Char('W') => { app.view = View::Weird; },
                     KeyCode::Char('D') => { app.view = View::Domains; },
+                    KeyCode::Char('?') => {
+                        if matches!(app.view, View::Flows | View::Packets | View::Stream) {
+                            app.modal = Modal::Explain;
+                        }
+                    }
                     KeyCode::Char('q') => return Ok(()),
                     KeyCode::Char('/') => {
                         if app.view == View::Flows {
@@ -2643,6 +2670,92 @@ const STREAM_SEARCH_MODAL_HELP: &str =
 const STREAM_SEARCH_STATUS_TYPE_TO_SEARCH: &str = "type to search";
 const STREAM_SEARCH_STATUS_MATCH_FOUND: &str = "match found (n/N to navigate)";
 const STREAM_SEARCH_STATUS_NO_MATCHES: &str = "no matches";
+
+fn build_explain_lines(app: &App) -> Vec<Line<'static>> {
+    let Some(fl) = app.selected_flow() else {
+        return vec![Line::from(Span::styled(
+            "No flow selected.",
+            Style::default().fg(c_muted()),
+        ))];
+    };
+
+    let ex = crate::explain::explain_flow(&app.rows, fl);
+
+    let mut out: Vec<Line> = Vec::new();
+    out.push(Line::from(vec![Span::styled(
+        ex.title,
+        Style::default().fg(c_accent()).add_modifier(Modifier::BOLD),
+    )]));
+    out.push(Line::from(Span::raw("")));
+
+    out.push(Line::from(vec![
+        Span::styled("Likely: ", Style::default().fg(c_muted())),
+        Span::styled(
+            ex.likely,
+            Style::default().fg(c_text()).add_modifier(Modifier::BOLD),
+        ),
+    ]));
+
+    if !ex.why.is_empty() {
+        out.push(Line::from(Span::raw("")));
+        out.push(Line::from(Span::styled(
+            "Why I think that:",
+            Style::default().fg(c_muted()).add_modifier(Modifier::BOLD),
+        )));
+        for w in ex.why.iter().take(8) {
+            out.push(Line::from(vec![
+                Span::styled("• ", Style::default().fg(c_muted())),
+                Span::styled(w.to_string(), Style::default().fg(c_text())),
+            ]));
+        }
+    }
+
+    if !ex.next.is_empty() {
+        out.push(Line::from(Span::raw("")));
+        out.push(Line::from(Span::styled(
+            "Next steps:",
+            Style::default().fg(c_muted()).add_modifier(Modifier::BOLD),
+        )));
+        for n in ex.next.iter().take(8) {
+            out.push(Line::from(vec![
+                Span::styled("• ", Style::default().fg(c_muted())),
+                Span::styled(n.to_string(), Style::default().fg(c_text())),
+            ]));
+        }
+    }
+
+    out.push(Line::from(Span::raw("")));
+    out.push(Line::from(Span::styled(
+        "Esc to close",
+        Style::default().fg(c_muted()),
+    )));
+
+    out
+}
+
+fn render_explain_modal(
+    f: &mut ratatui::Frame,
+    size: ratatui::layout::Rect,
+    lines: &[Line<'static>],
+) {
+    let area = centered_rect(80, 60, size);
+    f.render_widget(Clear, area);
+    let inner = area.inner(Margin {
+        horizontal: 2,
+        vertical: 1,
+    });
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title("Explain")
+        .style(Style::default().bg(c_panel()).fg(c_text()));
+    f.render_widget(block, area);
+
+    let p = Paragraph::new(lines.to_vec())
+        .wrap(Wrap { trim: true })
+        .style(Style::default().bg(c_panel()).fg(c_text()));
+    f.render_widget(p, inner);
+}
 
 fn render_search_modal(
     f: &mut ratatui::Frame,

@@ -9,5 +9,7 @@ pub mod ui;
 pub mod ui_filter;
 pub mod weird;
 pub mod domains;
+pub mod hints;
+pub mod explain;
 
 pub mod live;

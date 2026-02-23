@@ -265,6 +265,9 @@ pub fn parse_tshark_fields_line(line: &str) -> Option<PacketRow> {
         tcp_ack: None,
         tcp_flags,
         payload: Vec::new(),
+        dns_qname: None,
+        http_host: None,
+        tls_sni: None,
     };
 
     if let (Some(src), Some(dst), Some(proto), Some(sp), Some(dp)) =
@@ -285,6 +288,8 @@ pub fn parse_tshark_fields_line(line: &str) -> Option<PacketRow> {
         });
         row.flow = Some(fk);
     }
+
+    crate::hints::populate_hints(&mut row);
 
     row.summary = crate::pcap::summarize(&row);
 

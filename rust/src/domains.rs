@@ -27,34 +27,40 @@ pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex) -> DomainsSu
     let mut map: BTreeMap<String, DomainStats> = BTreeMap::new();
 
     for r in rows {
-        if r.proto != Some(L4Proto::Udp) {
-            continue;
-        }
-        // DNS is usually 53/udp.
-        let sp = r.src_port.unwrap_or(0);
-        let dp = r.dst_port.unwrap_or(0);
-        if sp != 53 && dp != 53 {
-            continue;
-        }
-
-        let Some(msg) = parse_dns_message(&r.payload) else {
-            continue;
-        };
-
-        if msg.qname.is_empty() {
-            continue;
-        }
-
-        let e = map.entry(msg.qname).or_default();
-        if msg.is_response {
-            e.responses += 1;
-            if msg.rcode != 0 {
-                e.failures += 1;
+        // DNS source (UDP/53 payload parse)
+        if r.proto == Some(L4Proto::Udp) {
+            // DNS is usually 53/udp.
+            let sp = r.src_port.unwrap_or(0);
+            let dp = r.dst_port.unwrap_or(0);
+            if sp == 53 || dp == 53 {
+                if let Some(msg) = parse_dns_message(&r.payload) {
+                    if !msg.qname.is_empty() {
+                        let e = map.entry(msg.qname).or_default();
+                        if msg.is_response {
+                            e.responses += 1;
+                            if msg.rcode != 0 {
+                                e.failures += 1;
+                            }
+                            for ip in msg.answer_ips {
+                                e.ips.insert(ip);
+                            }
+                        } else {
+                            e.queries += 1;
+                        }
+                    }
+                }
             }
-            for ip in msg.answer_ips {
-                e.ips.insert(ip);
-            }
-        } else {
+        }
+
+        // HTTP Host hint (plaintext)
+        if let Some(host) = &r.http_host {
+            let e = map.entry(host.clone()).or_default();
+            e.queries += 1;
+        }
+
+        // TLS SNI hint
+        if let Some(sni) = &r.tls_sni {
+            let e = map.entry(sni.clone()).or_default();
             e.queries += 1;
         }
     }
