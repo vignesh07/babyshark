@@ -103,6 +103,8 @@ pub struct App {
     pub live_rx: Option<std::sync::mpsc::Receiver<crate::pcap::PacketRow>>,
     pub live_total_packets: usize,
     pub live_pps: f64,
+    pub live_capture_start: std::time::Instant,
+    pub live_dropped_packets: usize,
     pub live_pps_window_start: std::time::Instant,
     pub live_pps_window_count: usize,
     pub live_pending_rebuild: usize,
@@ -159,6 +161,8 @@ impl App {
             live_rx: None,
             live_total_packets: 0,
             live_pps: 0.0,
+            live_capture_start: std::time::Instant::now(),
+            live_dropped_packets: 0,
             live_pps_window_start: std::time::Instant::now(),
             live_pps_window_count: 0,
             live_pending_rebuild: 0,
@@ -269,6 +273,10 @@ impl App {
         }
     }
 
+    fn compute_live_drop(current_len: usize, cap: usize) -> usize {
+        current_len.saturating_sub(cap)
+    }
+
     fn poll_live(&mut self) {
         const LIVE_CAP: usize = 20_000;
         const REBUILD_EVERY: usize = 200;
@@ -302,7 +310,8 @@ impl App {
 
         // cap buffer (drop oldest) and renumber indices so FlowIndex packet_indices remain valid.
         if self.rows.len() > LIVE_CAP {
-            let drop = self.rows.len() - LIVE_CAP;
+            let drop = Self::compute_live_drop(self.rows.len(), LIVE_CAP);
+            self.live_dropped_packets += drop;
             self.rows.drain(0..drop);
             for (i, r) in self.rows.iter_mut().enumerate() {
                 r.index = i;
@@ -939,6 +948,21 @@ fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
         )),
         action: None,
     });
+
+    if app.live_iface.is_some() {
+        let secs = app.live_capture_start.elapsed().as_secs();
+        let dropped = app.live_dropped_packets;
+        rows.push(OverviewRow {
+            label: Line::from(Span::styled(
+                format!(
+                    "Live: {secs}s   pps~{:.1}   dropped~{dropped}",
+                    app.live_pps
+                ),
+                Style::default().fg(c_muted()),
+            )),
+            action: None,
+        });
+    }
 
     // Packets/sec sparkline (coarse buckets).
     if !ov.pps_buckets.is_empty() {
@@ -2166,6 +2190,13 @@ fn render_modal(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compute_live_drop_is_saturating() {
+        assert_eq!(App::compute_live_drop(10, 10), 0);
+        assert_eq!(App::compute_live_drop(9, 10), 0);
+        assert_eq!(App::compute_live_drop(11, 10), 1);
+    }
 
     #[test]
     fn hexdump_highlights_current_match() {
