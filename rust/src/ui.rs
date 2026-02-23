@@ -15,6 +15,23 @@ use ratatui::layout::{Constraint, Direction, Layout, Margin};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap};
+
+#[derive(Debug, Clone)]
+enum OverviewAction {
+    GoFlows,
+    GoWeird,
+    // Domains view will live here later.
+    Port(u16),
+    Host(std::net::IpAddr),
+    FlowIndex(usize),
+}
+
+#[derive(Debug, Clone)]
+struct OverviewRow {
+    label: Line<'static>,
+    action: Option<OverviewAction>,
+}
+
 use ratatui::Terminal;
 use std::io::{self, Stdout};
 use std::path::{Path, PathBuf};
@@ -94,6 +111,9 @@ pub struct App {
 
     pub view: View,
 
+    // overview dashboard selection
+    pub overview_selected_row: usize,
+
     // flows selection is by index into `visible_flow_indices`
     pub selected_row: usize,
     pub visible_flow_indices: Vec<usize>,
@@ -139,6 +159,7 @@ impl App {
             rows,
             flows,
             view: View::Overview,
+            overview_selected_row: 0,
             selected_row: 0,
             visible_flow_indices: Vec::new(),
             weird_selected_row: 0,
@@ -847,6 +868,202 @@ fn bytes_to_pretty_text(
     Text::from(bytes_to_pretty_lines(bytes, match_ranges, current_match))
 }
 
+fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
+    use crate::summary::build_overview;
+
+    let ov = build_overview(&app.rows, &app.flows, 10);
+    let weird = crate::weird::build_weird_summary(&app.rows, &app.flows);
+
+    let mut rows: Vec<OverviewRow> = Vec::new();
+
+    rows.push(OverviewRow {
+        label: Line::from(vec![Span::styled(
+            "In plain English",
+            Style::default().fg(c_text()).add_modifier(Modifier::BOLD),
+        )]),
+        action: None,
+    });
+
+    let top_talker = ov
+        .top_hosts
+        .first()
+        .map(|(ip, c)| format!("{ip} ({:.1}KB)", (c.bytes as f64) / 1024.0))
+        .unwrap_or_else(|| "—".to_string());
+    let top_flow = ov
+        .top_flows
+        .first()
+        .map(|f| format!("{} ({} pkts)", f.label(), f.total_packets))
+        .unwrap_or_else(|| "—".to_string());
+
+    rows.push(OverviewRow {
+        label: Line::from(Span::styled(
+            format!(
+                "Packets: {}   Flows: {}   Top talker: {top_talker}",
+                ov.total_packets,
+                app.flows.flows.len()
+            ),
+            Style::default().fg(c_muted()),
+        )),
+        action: None,
+    });
+    rows.push(OverviewRow {
+        label: Line::from(Span::styled(
+            format!("Top flow: {top_flow}"),
+            Style::default().fg(c_muted()),
+        )),
+        action: None,
+    });
+    rows.push(OverviewRow {
+        label: Line::from(Span::raw("")),
+        action: None,
+    });
+
+    rows.push(OverviewRow {
+        label: Line::from(vec![Span::styled(
+            "What should I click?",
+            Style::default().fg(c_text()).add_modifier(Modifier::BOLD),
+        )]),
+        action: None,
+    });
+    rows.push(OverviewRow {
+        label: Line::from(vec![
+            Span::styled("• ", Style::default().fg(c_muted())),
+            Span::styled("Flows (raw)", Style::default().fg(c_accent())),
+            Span::styled("  (press F)", Style::default().fg(c_muted())),
+        ]),
+        action: Some(OverviewAction::GoFlows),
+    });
+
+    if weird.items.iter().any(|it| !it.flow_indices.is_empty()) {
+        let first = weird
+            .items
+            .iter()
+            .find(|it| !it.flow_indices.is_empty())
+            .map(|it| format!("{} ({} flows)", it.title, it.flow_indices.len()))
+            .unwrap_or_else(|| "Weird stuff".to_string());
+        rows.push(OverviewRow {
+            label: Line::from(vec![
+                Span::styled("• ", Style::default().fg(c_muted())),
+                Span::styled(
+                    format!("Weird stuff: {first}"),
+                    Style::default().fg(Color::Rgb(255, 215, 0)),
+                ),
+                Span::styled("  (press W)", Style::default().fg(c_muted())),
+            ]),
+            action: Some(OverviewAction::GoWeird),
+        });
+    }
+
+    rows.push(OverviewRow {
+        label: Line::from(Span::raw("")),
+        action: None,
+    });
+
+    rows.push(OverviewRow {
+        label: Line::from(vec![Span::styled(
+            "Traffic mix",
+            Style::default().fg(c_text()).add_modifier(Modifier::BOLD),
+        )]),
+        action: None,
+    });
+    rows.push(OverviewRow {
+        label: Line::from(Span::styled(
+            format!("TCP: {}  UDP: {}  Other: {}", ov.protos.tcp, ov.protos.udp, ov.protos.other),
+            Style::default().fg(c_muted()),
+        )),
+        action: None,
+    });
+    rows.push(OverviewRow {
+        label: Line::from(Span::raw("")),
+        action: None,
+    });
+
+    rows.push(OverviewRow {
+        label: Line::from(vec![Span::styled(
+            "Top ports (click = filter flows)",
+            Style::default().fg(c_text()).add_modifier(Modifier::BOLD),
+        )]),
+        action: None,
+    });
+    for (port, c) in ov.top_ports.iter().take(8) {
+        rows.push(OverviewRow {
+            label: Line::from(vec![
+                Span::styled("  ", Style::default()),
+                Span::styled(
+                    format!("{port:>5}"),
+                    Style::default().fg(c_accent()).add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(UI_SPACER),
+                Span::styled(
+                    format!("bytes={:<10} pkts={}", c.bytes, c.packets),
+                    Style::default().fg(c_text()),
+                ),
+            ]),
+            action: Some(OverviewAction::Port(*port)),
+        });
+    }
+    rows.push(OverviewRow {
+        label: Line::from(Span::raw("")),
+        action: None,
+    });
+
+    rows.push(OverviewRow {
+        label: Line::from(vec![Span::styled(
+            "Top hosts (IPv4 only)",
+            Style::default().fg(c_text()).add_modifier(Modifier::BOLD),
+        )]),
+        action: None,
+    });
+    for (ip, c) in ov.top_hosts.iter().take(8) {
+        rows.push(OverviewRow {
+            label: Line::from(vec![
+                Span::styled("  ", Style::default()),
+                Span::styled(
+                    format!("{ip:<15}"),
+                    Style::default().fg(c_accent()).add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(UI_SPACER),
+                Span::styled(
+                    format!("bytes={:<10} pkts={}", c.bytes, c.packets),
+                    Style::default().fg(c_text()),
+                ),
+            ]),
+            action: Some(OverviewAction::Host(*ip)),
+        });
+    }
+    rows.push(OverviewRow {
+        label: Line::from(Span::raw("")),
+        action: None,
+    });
+
+    rows.push(OverviewRow {
+        label: Line::from(vec![Span::styled(
+            "Top flows (click = jump)",
+            Style::default().fg(c_text()).add_modifier(Modifier::BOLD),
+        )]),
+        action: None,
+    });
+    for (i, fl) in ov.top_flows.iter().take(6).enumerate() {
+        rows.push(OverviewRow {
+            label: Line::from(vec![
+                Span::styled("  ", Style::default()),
+                Span::styled(format!("#{:>2} ", i + 1), Style::default().fg(c_muted())),
+                Span::styled(fl.label(), Style::default().fg(c_text())),
+                Span::raw(UI_SPACER),
+                Span::styled(format!("{}B", fl.total_bytes), Style::default().fg(c_muted())),
+            ]),
+            action: app
+                .flows
+                .flows
+                .iter()
+                .position(|f| f.key == fl.key)
+                .map(OverviewAction::FlowIndex),
+        });
+    }
+
+    rows
+}
+
 fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) -> Result<()> {
     let mut flow_state = ListState::default();
     if !app.visible_flow_indices.is_empty() {
@@ -920,50 +1137,46 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
 
             match app.view {
                 View::Overview => {
-                    use crate::summary::build_overview;
+                    let rows = build_overview_rows(app);
 
-                    let ov = build_overview(&app.rows, &app.flows, 10);
+                    // Build list items + state
+                    let items: Vec<ListItem> = rows
+                        .iter()
+                        .map(|r| {
+                            let st = if r.action.is_some() {
+                                Style::default().fg(c_text())
+                            } else {
+                                Style::default().fg(c_muted())
+                            };
+                            ListItem::new(r.label.clone()).style(st)
+                        })
+                        .collect();
 
-                    let mut lines: Vec<ratatui::text::Line> = Vec::new();
-                    lines.push(ratatui::text::Line::from(vec![
-                        ratatui::text::Span::styled("Traffic mix", ratatui::style::Style::default().fg(c_text()).add_modifier(ratatui::style::Modifier::BOLD)),
-                    ]));
-                    lines.push(ratatui::text::Line::from(ratatui::text::Span::styled(
-                        format!("TCP: {}  UDP: {}  Other: {}", ov.protos.tcp, ov.protos.udp, ov.protos.other),
-                        ratatui::style::Style::default().fg(c_muted()),
-                    )));
-                    lines.push(ratatui::text::Line::from(ratatui::text::Span::raw("")));
-
-                    lines.push(ratatui::text::Line::from(vec![
-                        ratatui::text::Span::styled("Top ports (by bytes)", ratatui::style::Style::default().fg(c_text()).add_modifier(ratatui::style::Modifier::BOLD)),
-                    ]));
-                    for (port, c) in ov.top_ports.iter().take(8) {
-                        lines.push(ratatui::text::Line::from(ratatui::text::Span::styled(
-                            format!("{:>5}  bytes={:<10} pkts={}", port, c.bytes, c.packets),
-                            ratatui::style::Style::default().fg(c_text()),
-                        )));
-                    }
-                    lines.push(ratatui::text::Line::from(ratatui::text::Span::raw("")));
-
-                    lines.push(ratatui::text::Line::from(vec![
-                        ratatui::text::Span::styled("Top hosts (IPv4 only)", ratatui::style::Style::default().fg(c_text()).add_modifier(ratatui::style::Modifier::BOLD)),
-                    ]));
-                    for (ip, c) in ov.top_hosts.iter().take(8) {
-                        lines.push(ratatui::text::Line::from(ratatui::text::Span::styled(
-                            format!("{:<15}  bytes={:<10} pkts={}", ip, c.bytes, c.packets),
-                            ratatui::style::Style::default().fg(c_text()),
-                        )));
+                    let mut overview_state = ListState::default();
+                    if !items.is_empty() {
+                        // Clamp selection.
+                        app.overview_selected_row = app.overview_selected_row.min(items.len() - 1);
+                        overview_state.select(Some(app.overview_selected_row));
                     }
 
-                    let p = ratatui::widgets::Paragraph::new(lines)
+                    let list = List::new(items)
                         .block(
-                            ratatui::widgets::Block::default()
-                                .borders(ratatui::widgets::Borders::ALL)
-                                .title("Overview  (F flows)")
-                                .style(ratatui::style::Style::default().bg(c_panel())),
+                            Block::default()
+                                .borders(Borders::ALL)
+                                .title("Overview  (Enter = drill down, F flows, W weird)")
+                                .style(Style::default().bg(c_panel())),
                         )
-                        .wrap(ratatui::widgets::Wrap { trim: true });
-                    f.render_widget(p, body_chunks[0]);
+                        .highlight_style(
+                            Style::default()
+                                .bg(c_highlight_bg())
+                                .fg(c_text())
+                                .add_modifier(Modifier::BOLD),
+                        )
+                        .highlight_symbol("❯ ");
+
+                    f.render_stateful_widget(list, body_chunks[0], &mut overview_state);
+
+                    // Store rows in a local closure via a tiny hack: we re-build on Enter.
                 }
 
                 View::Weird => {
@@ -1512,6 +1725,58 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                 app.apply_filter();
                                 flow_state.select(Some(app.selected_row));
                             }
+                        } else if app.view == View::Overview {
+                            // Rebuild the overview rows in the same order as the UI and execute the selected action.
+                            let rows = build_overview_rows(app);
+                            if rows.is_empty() {
+                                // nothing
+                            } else {
+                                let sel = app.overview_selected_row.min(rows.len() - 1);
+                                if let Some(action) = rows.get(sel).and_then(|r| r.action.clone()) {
+                                    match action {
+                                        OverviewAction::GoFlows => {
+                                            app.view = View::Flows;
+                                        }
+                                        OverviewAction::GoWeird => {
+                                            app.view = View::Weird;
+                                        }
+                                        OverviewAction::Port(p) => {
+                                            app.weird_flow_subset = None;
+                                            app.weird_active_label = None;
+                                            app.filter.query = format!(":{p}");
+                                            app.view = View::Flows;
+                                            app.selected_row = 0;
+                                            app.apply_filter();
+                                            flow_state.select(Some(app.selected_row));
+                                        }
+                                        OverviewAction::Host(ip) => {
+                                            app.weird_flow_subset = None;
+                                            app.weird_active_label = None;
+                                            app.filter.query = ip.to_string();
+                                            app.view = View::Flows;
+                                            app.selected_row = 0;
+                                            app.apply_filter();
+                                            flow_state.select(Some(app.selected_row));
+                                        }
+                                        OverviewAction::FlowIndex(flow_i) => {
+                                            app.weird_flow_subset = None;
+                                            app.weird_active_label = None;
+                                            app.view = View::Flows;
+                                            app.apply_filter();
+                                            if let Some(pos) = app
+                                                .visible_flow_indices
+                                                .iter()
+                                                .position(|i| *i == flow_i)
+                                            {
+                                                app.selected_row = pos;
+                                            } else {
+                                                app.selected_row = 0;
+                                            }
+                                            flow_state.select(Some(app.selected_row));
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                     KeyCode::Char('f') => {
@@ -1530,6 +1795,9 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         }
                     }
                     KeyCode::Down | KeyCode::Char('j') => match app.view {
+                        View::Overview => {
+                            app.overview_selected_row = app.overview_selected_row.saturating_add(1);
+                        }
                         View::Flows => {
                             app.move_down();
                             flow_state.select(Some(app.selected_row));
@@ -1543,6 +1811,9 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         _ => {}
                     },
                     KeyCode::Up | KeyCode::Char('k') => match app.view {
+                        View::Overview => {
+                            app.overview_selected_row = app.overview_selected_row.saturating_sub(1);
+                        }
                         View::Flows => {
                             app.move_up();
                             flow_state.select(Some(app.selected_row));
