@@ -127,7 +127,7 @@ pub struct App {
 
     // domains-mode state
     pub domains_selected_row: usize,
-    pub domains_sort_by_bytes: bool,
+    pub domains_sort: crate::domains::DomainsSort,
 
     // active flow subset (used by Weird + Domains drilldown)
     pub flow_subset: Option<Vec<usize>>, // flow indices (into flows.flows)
@@ -176,7 +176,7 @@ impl App {
             visible_flow_indices: Vec::new(),
             weird_selected_row: 0,
             domains_selected_row: 0,
-            domains_sort_by_bytes: false,
+            domains_sort: crate::domains::DomainsSort::Connections,
             flow_subset: None,
             subset_label: None,
             filter: FlowFilter::default(),
@@ -1390,17 +1390,9 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                 }
 
                 View::Domains => {
-                    use crate::domains::{build_domains_summary, DomainsSort};
+                    use crate::domains::build_domains_summary;
 
-                    let dom = build_domains_summary(
-                        &app.rows,
-                        &app.flows,
-                        if app.domains_sort_by_bytes {
-                            DomainsSort::Bytes
-                        } else {
-                            DomainsSort::Connections
-                        },
-                    );
+                    let dom = build_domains_summary(&app.rows, &app.flows, app.domains_sort);
 
                     let items: Vec<ListItem> = dom
                         .items
@@ -1445,7 +1437,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         .block(
                             Block::default()
                                 .borders(Borders::ALL)
-                                .title("Domains (DNS only)  (Enter show flows, s sort, c clear, Esc back)")
+                                .title("Domains (DNS only)  (Enter show flows, s sort (conn/bytes/fail), c clear, Esc back)")
                                 .style(Style::default().bg(c_panel())),
                         )
                         .highlight_style(
@@ -1982,7 +1974,12 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     }
                     KeyCode::Char('s') => {
                         if app.view == View::Domains {
-                            app.domains_sort_by_bytes = !app.domains_sort_by_bytes;
+                            use crate::domains::DomainsSort;
+                            app.domains_sort = match app.domains_sort {
+                                DomainsSort::Connections => DomainsSort::Bytes,
+                                DomainsSort::Bytes => DomainsSort::Failures,
+                                DomainsSort::Failures => DomainsSort::Connections,
+                            };
                         }
                     }
                     KeyCode::Esc => {
@@ -2014,11 +2011,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             let dom = crate::domains::build_domains_summary(
                                 &app.rows,
                                 &app.flows,
-                                if app.domains_sort_by_bytes {
-                                    crate::domains::DomainsSort::Bytes
-                                } else {
-                                    crate::domains::DomainsSort::Connections
-                                },
+                                app.domains_sort,
                             );
                             if let Some(it) = dom.items.get(app.domains_selected_row) {
                                 let mut subset = it.flow_indices.clone();

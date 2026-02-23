@@ -30,6 +30,7 @@ This is the concrete work list to get to a “PCAPs for humans” launch.
 - Weird: per-detector “next click” suggestions in the UI
 - Domains: sorted by top domains by connections (flow count)
 - Domains: optional sort by bytes (press `s` in Domains view)
+- Domains: optional sort by DNS failures (press `s` to cycle sort)
 
 ---
 
@@ -59,7 +60,7 @@ This is the concrete work list to get to a “PCAPs for humans” launch.
 ### D) Domains-mode completeness
 1. **(shipped)** Top domains by connections.
 2. **(shipped)** Top domains by bytes.
-3. Domains with most failures (DNS + handshake failures if we can infer).
+3. **(shipped)** Domains with most failures (DNS + handshake failures if we can infer).
 
 ### E) Explain/Glossary completeness
 1. Glossary popover/inline for:

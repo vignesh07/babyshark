@@ -33,6 +33,7 @@ pub struct DomainsSummary {
 pub enum DomainsSort {
     Connections,
     Bytes,
+    Failures,
 }
 
 pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex, sort: DomainsSort) -> DomainsSummary {
@@ -168,6 +169,21 @@ pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex, sort: Domain
                     .cmp(&a.stats.bytes)
                     .then_with(|| b.stats.connections.cmp(&a.stats.connections))
                     .then_with(|| b.stats.failures.cmp(&a.stats.failures))
+                    .then_with(|| a.domain.cmp(&b.domain))
+            });
+        }
+        DomainsSort::Failures => {
+            // Sort by failures (desc), then connections, then activity.
+            items.sort_by(|a, b| {
+                b.stats
+                    .failures
+                    .cmp(&a.stats.failures)
+                    .then_with(|| b.stats.connections.cmp(&a.stats.connections))
+                    .then_with(|| {
+                        let ac = a.stats.queries + a.stats.responses;
+                        let bc = b.stats.queries + b.stats.responses;
+                        bc.cmp(&ac)
+                    })
                     .then_with(|| a.domain.cmp(&b.domain))
             });
         }
@@ -419,5 +435,76 @@ mod tests {
 
         assert_eq!(dom.items.first().unwrap().domain, "a.com");
         assert!(dom.items.first().unwrap().stats.bytes >= 1500);
+    }
+
+    #[test]
+    fn domains_sort_by_failures() {
+        use chrono::{TimeZone, Utc};
+
+        let mk_dns = |idx: usize, qname: &str, rcode: u8| PacketRow {
+            index: idx,
+            ts: Utc.timestamp_opt(0, 0).unwrap(),
+            len: 60,
+            src: Some("1.1.1.1".parse().unwrap()),
+            dst: Some("10.0.0.2".parse().unwrap()),
+            proto: Some(L4Proto::Udp),
+            src_port: Some(53),
+            dst_port: Some(55555),
+            summary: String::new(),
+            flow: Some(crate::pcap::FlowKey {
+                src: "1.1.1.1".parse().unwrap(),
+                dst: "10.0.0.2".parse().unwrap(),
+                src_port: 53,
+                dst_port: 55555,
+                proto: L4Proto::Udp,
+            }),
+            flow_dir: Some(crate::pcap::FlowDir::BtoA),
+            tcp_seq: None,
+            tcp_ack: None,
+            tcp_flags: None,
+            payload: make_dns_response(qname, rcode),
+            tcp_retransmission: false,
+            tcp_out_of_order: false,
+            dns_qname: None,
+            dns_rcode: None,
+            http_host: None,
+            tls_sni: None,
+        };
+
+        // a.com: 2 failures; b.com: 0 failures.
+        let rows = vec![
+            mk_dns(0, "a.com", 3),
+            mk_dns(1, "a.com", 2),
+            mk_dns(2, "b.com", 0),
+        ];
+        let flows = crate::flow::FlowIndex::build(&rows);
+        let dom = build_domains_summary(&rows, &flows, DomainsSort::Failures);
+
+        assert_eq!(dom.items.first().unwrap().domain, "a.com");
+        assert!(dom.items.first().unwrap().stats.failures >= 2);
+    }
+
+    fn make_dns_response(qname: &str, rcode: u8) -> Vec<u8> {
+        // Minimal DNS response with qdcount=1, ancount=0.
+        // flags: 0x8000 (response) | rcode
+        let flags: u16 = 0x8000 | (rcode as u16);
+        let mut b: Vec<u8> = vec![
+            0x00, 0x01, // id
+            (flags >> 8) as u8,
+            (flags & 0xff) as u8,
+            0x00, 0x01, // qdcount
+            0x00, 0x00, // ancount
+            0x00, 0x00, // nscount
+            0x00, 0x00, // arcount
+        ];
+
+        for part in qname.split('.') {
+            b.push(part.len() as u8);
+            b.extend_from_slice(part.as_bytes());
+        }
+        b.push(0);
+        // qtype A, qclass IN
+        b.extend_from_slice(&[0x00, 0x01, 0x00, 0x01]);
+        b
     }
 }
