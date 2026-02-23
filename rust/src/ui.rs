@@ -96,6 +96,7 @@ pub enum Modal {
     StreamSearch,
     Explain,
     Glossary,
+    Help,
 }
 
 pub struct App {
@@ -108,6 +109,9 @@ pub struct App {
     pub live_pps: f64,
     pub live_capture_start: std::time::Instant,
     pub live_dropped_packets: usize,
+
+    // onboarding
+    pub show_onboarding: bool,
     pub live_pps_window_start: std::time::Instant,
     pub live_pps_window_count: usize,
     pub live_pending_rebuild: usize,
@@ -172,6 +176,7 @@ impl App {
             live_pps: 0.0,
             live_capture_start: std::time::Instant::now(),
             live_dropped_packets: 0,
+            show_onboarding: true,
             live_pps_window_start: std::time::Instant::now(),
             live_pps_window_count: 0,
             live_pending_rebuild: 0,
@@ -501,6 +506,9 @@ impl App {
             Modal::Glossary => {
                 // read-only modal
             }
+            Modal::Help => {
+                // read-only modal
+            }
             Modal::None => {}
         }
         self.modal = Modal::None;
@@ -537,6 +545,9 @@ impl App {
             Modal::Glossary => {
                 // read-only modal
             }
+            Modal::Help => {
+                // read-only modal
+            }
             Modal::None => {}
         }
     }
@@ -563,6 +574,9 @@ impl App {
             Modal::Glossary => {
                 // read-only modal
             }
+            Modal::Help => {
+                // read-only modal
+            }
             Modal::None => {}
         }
     }
@@ -586,6 +600,9 @@ impl App {
                 // read-only modal
             }
             Modal::Glossary => {
+                // read-only modal
+            }
+            Modal::Help => {
                 // read-only modal
             }
             Modal::None => {}
@@ -939,6 +956,53 @@ fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
     let weird = crate::weird::build_weird_summary(&app.rows, &app.flows);
 
     let mut rows: Vec<OverviewRow> = Vec::new();
+
+    if app.show_onboarding {
+        rows.push(OverviewRow {
+            label: Line::from(vec![Span::styled(
+                "New here?",
+                Style::default().fg(Color::Rgb(255, 215, 0)).add_modifier(Modifier::BOLD),
+            )]),
+            action: None,
+        });
+        rows.push(OverviewRow {
+            label: Line::from(vec![
+                Span::styled("• ", Style::default().fg(c_muted())),
+                Span::styled("Press D", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
+                Span::styled(" for Domains (human view)", Style::default().fg(c_text())),
+            ]),
+            action: None,
+        });
+        rows.push(OverviewRow {
+            label: Line::from(vec![
+                Span::styled("• ", Style::default().fg(c_muted())),
+                Span::styled("Press W", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
+                Span::styled(" for Weird stuff (troubleshoot)", Style::default().fg(c_text())),
+            ]),
+            action: None,
+        });
+        rows.push(OverviewRow {
+            label: Line::from(vec![
+                Span::styled("• ", Style::default().fg(c_muted())),
+                Span::styled("Press F", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
+                Span::styled(" for Flows (raw)", Style::default().fg(c_text())),
+            ]),
+            action: None,
+        });
+        rows.push(OverviewRow {
+            label: Line::from(vec![
+                Span::styled("• ", Style::default().fg(c_muted())),
+                Span::styled("Press h", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
+                Span::styled(" for help, g for glossary", Style::default().fg(c_text())),
+                Span::styled("  (x dismiss)", Style::default().fg(c_muted())),
+            ]),
+            action: None,
+        });
+        rows.push(OverviewRow {
+            label: Line::from(Span::raw("")),
+            action: None,
+        });
+    }
 
     rows.push(OverviewRow {
         label: Line::from(vec![Span::styled(
@@ -1824,6 +1888,11 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     Span::raw(UI_SPACER),
                     Span::styled("Esc close", Style::default().fg(c_muted())),
                 ]),
+                Modal::Help => Line::from(vec![
+                    Span::styled("HELP", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
+                    Span::raw(UI_SPACER),
+                    Span::styled("Esc close", Style::default().fg(c_muted())),
+                ]),
                 Modal::None => match app.view {
                     View::Overview => Line::from(vec![
                         Span::styled("F", Style::default().fg(Color::Green)),
@@ -1933,6 +2002,10 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     let lines = build_glossary_lines();
                     render_glossary_modal(f, size, &lines);
                 }
+                Modal::Help => {
+                    let lines = build_help_lines();
+                    render_help_modal(f, size, &lines);
+                }
                 Modal::None => {}
             }
         })?;
@@ -1968,10 +2041,10 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                 }
 
                 match key.code {
-                    KeyCode::Char('o') => { app.view = View::Overview; },
-                    KeyCode::Char('F') => { app.flows_back_view = app.view; app.view = View::Flows; },
-                    KeyCode::Char('W') => { app.view = View::Weird; },
-                    KeyCode::Char('D') => { app.view = View::Domains; },
+                    KeyCode::Char('o') => { app.view = View::Overview; app.show_onboarding = false; },
+                    KeyCode::Char('F') => { app.flows_back_view = app.view; app.view = View::Flows; app.show_onboarding = false; },
+                    KeyCode::Char('W') => { app.view = View::Weird; app.show_onboarding = false; },
+                    KeyCode::Char('D') => { app.view = View::Domains; app.show_onboarding = false; },
                     KeyCode::Char('?') => {
                         if matches!(app.view, View::Flows | View::Packets | View::Stream) {
                             app.modal = Modal::Explain;
@@ -1979,6 +2052,16 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     }
                     KeyCode::Char('g') => {
                         app.modal = Modal::Glossary;
+                        app.show_onboarding = false;
+                    }
+                    KeyCode::Char('h') => {
+                        app.modal = Modal::Help;
+                        app.show_onboarding = false;
+                    }
+                    KeyCode::Char('x') => {
+                        if app.view == View::Overview {
+                            app.show_onboarding = false;
+                        }
                     }
                     KeyCode::Char('q') => return Ok(()),
                     KeyCode::Char('/') => {
@@ -3044,6 +3127,91 @@ fn render_glossary_modal(
     let block = Block::default()
         .borders(Borders::ALL)
         .title("Glossary")
+        .style(Style::default().bg(c_panel()).fg(c_text()));
+    f.render_widget(block, area);
+
+    let p = Paragraph::new(lines.to_vec())
+        .wrap(Wrap { trim: true })
+        .style(Style::default().bg(c_panel()).fg(c_text()));
+    f.render_widget(p, inner);
+}
+
+fn build_help_lines() -> Vec<Line<'static>> {
+    vec![
+        Line::from(Span::styled(
+            "Start here",
+            Style::default().fg(c_accent()).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::raw("")),
+        Line::from(vec![
+            Span::styled("o ", Style::default().fg(Color::Green)),
+            Span::styled("Overview", Style::default().fg(c_text())),
+            Span::styled("  (what’s going on)", Style::default().fg(c_muted())),
+        ]),
+        Line::from(vec![
+            Span::styled("D ", Style::default().fg(Color::Green)),
+            Span::styled("Domains", Style::default().fg(c_text())),
+            Span::styled("  (hostnames + drill down)", Style::default().fg(c_muted())),
+        ]),
+        Line::from(vec![
+            Span::styled("W ", Style::default().fg(Color::Green)),
+            Span::styled("Weird stuff", Style::default().fg(c_text())),
+            Span::styled("  (troubleshoot)", Style::default().fg(c_muted())),
+        ]),
+        Line::from(vec![
+            Span::styled("F ", Style::default().fg(Color::Green)),
+            Span::styled("Flows", Style::default().fg(c_text())),
+            Span::styled("  (raw)", Style::default().fg(c_muted())),
+        ]),
+        Line::from(Span::raw("")),
+        Line::from(Span::styled(
+            "Universal keys",
+            Style::default().fg(c_muted()).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(vec![
+            Span::styled("Enter", Style::default().fg(Color::Green)),
+            Span::styled(" drill down", Style::default().fg(c_text())),
+            Span::styled("   ", Style::default()),
+            Span::styled("Esc", Style::default().fg(Color::Green)),
+            Span::styled(" back", Style::default().fg(c_text())),
+        ]),
+        Line::from(vec![
+            Span::styled("/", Style::default().fg(Color::Green)),
+            Span::styled(" filter (Flows)", Style::default().fg(c_text())),
+            Span::styled("   ", Style::default()),
+            Span::styled("c", Style::default().fg(Color::Green)),
+            Span::styled(" clear subset", Style::default().fg(c_text())),
+        ]),
+        Line::from(vec![
+            Span::styled("?", Style::default().fg(Color::Green)),
+            Span::styled(" explain", Style::default().fg(c_text())),
+            Span::styled("   ", Style::default()),
+            Span::styled("g", Style::default().fg(Color::Green)),
+            Span::styled(" glossary", Style::default().fg(c_text())),
+        ]),
+        Line::from(Span::raw("")),
+        Line::from(Span::styled(
+            "Esc to close",
+            Style::default().fg(c_muted()),
+        )),
+    ]
+}
+
+fn render_help_modal(
+    f: &mut ratatui::Frame,
+    size: ratatui::layout::Rect,
+    lines: &[Line<'static>],
+) {
+    let area = centered_rect(80, 60, size);
+    f.render_widget(Clear, area);
+    let inner = area.inner(Margin {
+        horizontal: 2,
+        vertical: 1,
+    });
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title("Help")
         .style(Style::default().bg(c_panel()).fg(c_text()));
     f.render_widget(block, area);
 
