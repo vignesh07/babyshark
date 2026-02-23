@@ -936,6 +936,25 @@ fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
     rows.push(OverviewRow {
         label: Line::from(vec![
             Span::styled("• ", Style::default().fg(c_muted())),
+            Span::styled("Domains (human view)", Style::default().fg(Color::Rgb(255, 215, 0)).add_modifier(Modifier::BOLD)),
+            Span::styled("  (press D)", Style::default().fg(c_muted())),
+        ]),
+        // Domains row uses a dedicated keybind; make it obvious even if Enter does nothing.
+        action: None,
+    });
+
+    rows.push(OverviewRow {
+        label: Line::from(vec![
+            Span::styled("• ", Style::default().fg(c_muted())),
+            Span::styled("Weird stuff (troubleshoot)", Style::default().fg(Color::Rgb(255, 215, 0)).add_modifier(Modifier::BOLD)),
+            Span::styled("  (press W)", Style::default().fg(c_muted())),
+        ]),
+        action: Some(OverviewAction::GoWeird),
+    });
+
+    rows.push(OverviewRow {
+        label: Line::from(vec![
+            Span::styled("• ", Style::default().fg(c_muted())),
             Span::styled("Flows (raw)", Style::default().fg(c_accent())),
             Span::styled("  (press F)", Style::default().fg(c_muted())),
         ]),
@@ -951,14 +970,13 @@ fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
             .unwrap_or_else(|| "Weird stuff".to_string());
         rows.push(OverviewRow {
             label: Line::from(vec![
-                Span::styled("• ", Style::default().fg(c_muted())),
+                Span::styled("  ↳ ", Style::default().fg(c_muted())),
                 Span::styled(
-                    format!("Weird stuff: {first}"),
+                    format!("Detected: {first}"),
                     Style::default().fg(Color::Rgb(255, 215, 0)),
                 ),
-                Span::styled("  (press W)", Style::default().fg(c_muted())),
             ]),
-            action: Some(OverviewAction::GoWeird),
+            action: None,
         });
     }
 
@@ -1172,7 +1190,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         .block(
                             Block::default()
                                 .borders(Borders::ALL)
-                                .title("Overview  (Enter = drill down, F flows, W weird)")
+                                .title("Overview  (D domains, W weird, F flows)")
                                 .style(Style::default().bg(c_panel())),
                         )
                         .highlight_style(
