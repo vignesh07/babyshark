@@ -1918,7 +1918,9 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
         // Input
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
-                if key.kind != KeyEventKind::Press {
+                // On some terminals/platforms (notably macOS), certain keys may show up as Repeat.
+                // Treat Press+Repeat as input; ignore Release.
+                if key.kind == KeyEventKind::Release {
                     continue;
                 }
 
