@@ -1,8 +1,33 @@
 # babyshark
 
-Flows-first PCAP TUI with live capture (via `tshark`).
+**Wireshark made easy (in your terminal).**
 
-**Status:** alpha. Offline PCAP viewing works without Wireshark. Live capture requires `tshark`.
+Babyshark is a PCAP TUI that helps you answer:
+- What’s using the network?
+- What looks broken/weird?
+- What should I click next?
+
+**Status:** v0.1.0 (alpha).
+- Offline `.pcap` / `.pcapng` viewing works without Wireshark
+- Live capture requires `tshark` (Wireshark CLI)
+
+---
+
+## Quickstart
+
+### Download a release (recommended)
+
+Grab a binary from GitHub Releases:
+- https://github.com/vignesh07/babyshark/releases
+
+### Or build from source
+
+```bash
+git clone https://github.com/vignesh07/babyshark
+cd babyshark/rust
+cargo install --path . --force
+babyshark --help
+```
 
 ---
 
@@ -23,7 +48,12 @@ Flows-first PCAP TUI with live capture (via `tshark`).
 
 ## Install
 
-### Option A: build from source (recommended for now)
+### Option A: GitHub Release (recommended)
+
+Download a prebuilt binary:
+- https://github.com/vignesh07/babyshark/releases
+
+### Option B: build from source
 
 Prereqs:
 - Rust toolchain (stable)
@@ -32,11 +62,11 @@ Prereqs:
 ```bash
 git clone https://github.com/vignesh07/babyshark
 cd babyshark/rust
-cargo build --release
-./target/release/babyshark --help
+cargo install --path . --force
+babyshark --help
 ```
 
-### Option B: cargo install (dev-friendly)
+### Option C: cargo install (dev-friendly)
 
 ```bash
 cargo install --git https://github.com/vignesh07/babyshark --bin babyshark
@@ -202,6 +232,8 @@ Top-level:
 - `D` domains
 - `W` weird stuff
 - `F` flows
+- `h` help
+- `g` glossary
 - `q` quit
 
 In views:
@@ -209,7 +241,7 @@ In views:
 - `Esc` back
 - `c` clear active subset filter
 - `?` explain selected flow
-- `g` glossary
+- `x` dismiss onboarding hint (Overview)
 
 Flows view:
 - `↑/↓` or `j/k` move
@@ -241,10 +273,11 @@ When you bookmark/export, babyshark writes next to the PCAP in a hidden director
 
 ## Roadmap
 
+- Prettier onboarding + docs (screenshots/gifs)
 - `--bpf` capture filter pass-through for live mode
-- Better protocol hints (DNS/TLS heuristics)
+- Even better protocol hints + flow classification
 - Improved TCP reassembly (gap/retransmit markers)
-- Prebuilt binaries via GitHub Releases
+- Homebrew/Scoop packaging
 
 ---
 
