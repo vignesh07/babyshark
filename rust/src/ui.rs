@@ -1406,7 +1406,8 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                 Span::raw(UI_SPACER),
                                 Span::styled(
                                     format!(
-                                        "q={} r={} fail={} ips={}",
+                                        "conn={} q={} r={} fail={} ips={}",
+                                        it.stats.connections,
                                         it.stats.queries,
                                         it.stats.responses,
                                         it.stats.failures,

@@ -28,6 +28,7 @@ This is the concrete work list to get to a “PCAPs for humans” launch.
 - Weird: TCP retransmit / out-of-order hints (live via tshark fields)
 - Weird: high-latency flow heuristic (timestamp-based, rough)
 - Weird: per-detector “next click” suggestions in the UI
+- Domains: sorted by top domains by connections (flow count)
 
 ---
 
@@ -55,7 +56,7 @@ This is the concrete work list to get to a “PCAPs for humans” launch.
 4. **(shipped)** “Next click” suggestions per detector (structured, consistent).
 
 ### D) Domains-mode completeness
-1. Top domains by connections.
+1. **(shipped)** Top domains by connections.
 2. Top domains by bytes.
 3. Domains with most failures (DNS + handshake failures if we can infer).
 

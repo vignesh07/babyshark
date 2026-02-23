@@ -9,6 +9,9 @@ pub struct DomainStats {
     pub responses: u64,
     pub failures: u64,
     pub ips: BTreeSet<IpAddr>,
+
+    /// Approx "connections" for this domain: number of flows associated with it.
+    pub connections: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -25,6 +28,14 @@ pub struct DomainsSummary {
 
 pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex) -> DomainsSummary {
     let mut map: BTreeMap<String, DomainStats> = BTreeMap::new();
+    let mut conns: BTreeMap<String, BTreeSet<usize>> = BTreeMap::new();
+
+    // Fast lookup: canonical FlowKey -> index in flows.flows
+    let mut flow_lookup: std::collections::HashMap<crate::pcap::FlowKey, usize> =
+        std::collections::HashMap::new();
+    for (i, fl) in flows.flows.iter().enumerate() {
+        flow_lookup.insert(fl.key.clone(), i);
+    }
 
     for r in rows {
         // DNS source (UDP/53 payload parse)
@@ -35,6 +46,13 @@ pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex) -> DomainsSu
             if sp == 53 || dp == 53 {
                 if let Some(msg) = parse_dns_message(&r.payload) {
                     if !msg.qname.is_empty() {
+                        if let Some(fk) = &r.flow {
+                            let (canon, _flipped) = fk.canonical();
+                            if let Some(flow_i) = flow_lookup.get(&canon) {
+                                conns.entry(msg.qname.clone()).or_default().insert(*flow_i);
+                            }
+                        }
+
                         let e = map.entry(msg.qname).or_default();
                         if msg.is_response {
                             e.responses += 1;
@@ -54,12 +72,26 @@ pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex) -> DomainsSu
 
         // HTTP Host hint (plaintext)
         if let Some(host) = &r.http_host {
+            if let Some(fk) = &r.flow {
+                let (canon, _flipped) = fk.canonical();
+                if let Some(flow_i) = flow_lookup.get(&canon) {
+                    conns.entry(host.clone()).or_default().insert(*flow_i);
+                }
+            }
+
             let e = map.entry(host.clone()).or_default();
             e.queries += 1;
         }
 
         // TLS SNI hint
         if let Some(sni) = &r.tls_sni {
+            if let Some(fk) = &r.flow {
+                let (canon, _flipped) = fk.canonical();
+                if let Some(flow_i) = flow_lookup.get(&canon) {
+                    conns.entry(sni.clone()).or_default().insert(*flow_i);
+                }
+            }
+
             let e = map.entry(sni.clone()).or_default();
             e.queries += 1;
         }
@@ -68,7 +100,7 @@ pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex) -> DomainsSu
     // Build flow subsets per domain.
     let mut items: Vec<DomainItem> = Vec::new();
     for (domain, stats) in map {
-        let flow_indices = if stats.ips.is_empty() {
+        let flow_indices: Vec<usize> = if stats.ips.is_empty() {
             // If we don't have IPs, restrict to DNS traffic only.
             flows
                 .flows
@@ -89,6 +121,9 @@ pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex) -> DomainsSu
                 .collect()
         };
 
+        let mut stats = stats;
+        stats.connections = conns.get(&domain).map(|s| s.len() as u64).unwrap_or(0);
+
         items.push(DomainItem {
             domain,
             stats,
@@ -96,12 +131,17 @@ pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex) -> DomainsSu
         });
     }
 
-    // Sort by queries+responses, then failures.
+    // Sort by connections (flows), then failures, then activity.
     items.sort_by(|a, b| {
-        let ac = a.stats.queries + a.stats.responses;
-        let bc = b.stats.queries + b.stats.responses;
-        bc.cmp(&ac)
+        b.stats
+            .connections
+            .cmp(&a.stats.connections)
             .then_with(|| b.stats.failures.cmp(&a.stats.failures))
+            .then_with(|| {
+                let ac = a.stats.queries + a.stats.responses;
+                let bc = b.stats.queries + b.stats.responses;
+                bc.cmp(&ac)
+            })
             .then_with(|| a.domain.cmp(&b.domain))
     });
 
@@ -257,5 +297,52 @@ mod tests {
         let p = parse_dns_message(&b).unwrap();
         assert_eq!(p.qname, "example.com");
         assert!(!p.is_response);
+    }
+
+    #[test]
+    fn domains_sort_by_connections() {
+        use chrono::{TimeZone, Utc};
+
+        let mk = |idx: usize, host: &str, sp: u16, dp: u16| PacketRow {
+            index: idx,
+            ts: Utc.timestamp_opt(0, 0).unwrap(),
+            len: 60,
+            src: Some("10.0.0.2".parse().unwrap()),
+            dst: Some("93.184.216.34".parse().unwrap()),
+            proto: Some(L4Proto::Tcp),
+            src_port: Some(sp),
+            dst_port: Some(dp),
+            summary: String::new(),
+            flow: Some(crate::pcap::FlowKey {
+                src: "10.0.0.2".parse().unwrap(),
+                dst: "93.184.216.34".parse().unwrap(),
+                src_port: sp,
+                dst_port: dp,
+                proto: L4Proto::Tcp,
+            }),
+            flow_dir: Some(crate::pcap::FlowDir::AtoB),
+            tcp_seq: None,
+            tcp_ack: None,
+            tcp_flags: None,
+            payload: Vec::new(),
+            tcp_retransmission: false,
+            tcp_out_of_order: false,
+            dns_qname: None,
+            dns_rcode: None,
+            http_host: Some(host.to_string()),
+            tls_sni: None,
+        };
+
+        // a.com appears on 2 distinct flows (different src ports); b.com only on 1.
+        let rows = vec![
+            mk(0, "a.com", 1111, 80),
+            mk(1, "a.com", 2222, 80),
+            mk(2, "b.com", 3333, 80),
+        ];
+        let flows = crate::flow::FlowIndex::build(&rows);
+        let dom = build_domains_summary(&rows, &flows);
+
+        assert_eq!(dom.items.first().unwrap().domain, "a.com");
+        assert_eq!(dom.items.first().unwrap().stats.connections, 2);
     }
 }
