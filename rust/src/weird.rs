@@ -10,6 +10,7 @@ const TCP_FLAG_ACK: u16 = 0x10;
 pub struct WeirdItem {
     pub title: String,
     pub why: String,
+    pub next: String,
     /// Indices into `FlowIndex.flows`.
     pub flow_indices: Vec<usize>,
 }
@@ -59,6 +60,7 @@ pub fn build_weird_summary(rows: &[PacketRow], flows: &FlowIndex) -> WeirdSummar
         out.push(WeirdItem {
             title: "TCP resets (RST)".to_string(),
             why: "RST usually means a connection was refused/aborted. A few can be normal, but lots of RSTs often point to blocked ports, app crashes, or middleboxes terminating connections.".to_string(),
+            next: "Press Enter to filter to affected flows, then press ? for a plain-English explanation, or open Packets/Stream to see who sent the RST.".to_string(),
             flow_indices,
         });
     }
@@ -100,6 +102,7 @@ pub fn build_weird_summary(rows: &[PacketRow], flows: &FlowIndex) -> WeirdSummar
         out.push(WeirdItem {
             title: "Handshake not completed".to_string(),
             why: "Repeated SYNs without a SYN,ACK often means the server didn’t respond (dropped packets, firewall), or the capture missed the return path. If these line up with user complaints, it’s a strong lead.".to_string(),
+            next: "Press Enter to filter these flows, then check whether SYNs repeat and whether any SYN,ACK appears. If not, it may be blocked or one-sided capture.".to_string(),
             flow_indices,
         });
     }
@@ -131,6 +134,7 @@ pub fn build_weird_summary(rows: &[PacketRow], flows: &FlowIndex) -> WeirdSummar
         out.push(WeirdItem {
             title: "DNS failures (NXDOMAIN/SERVFAIL)".to_string(),
             why: "NXDOMAIN means the name doesn’t exist. SERVFAIL means the resolver had an internal error. If lots of flows show DNS failures, apps may look ‘offline’ even though the network is fine.".to_string(),
+            next: "Press Enter to filter, then open Packets to confirm the failing DNS responses (rcode). Check the Domains view to see which names are failing.".to_string(),
             flow_indices,
         });
     }
@@ -161,6 +165,7 @@ pub fn build_weird_summary(rows: &[PacketRow], flows: &FlowIndex) -> WeirdSummar
         out.push(WeirdItem {
             title: "TCP reliability hints (retransmits / out-of-order)".to_string(),
             why: "Retransmissions and out-of-order delivery often mean packet loss or jitter. A few can be normal on Wi‑Fi, but lots can cause slow loads, buffering, or timeouts.".to_string(),
+            next: "Press Enter to filter, then open Packets/Stream and look for repeated segments. If this is live mode, these hints come from tshark’s TCP analysis.".to_string(),
             flow_indices,
         });
     }
@@ -197,6 +202,7 @@ pub fn build_weird_summary(rows: &[PacketRow], flows: &FlowIndex) -> WeirdSummar
         out.push(WeirdItem {
             title: "High-latency flows (rough)".to_string(),
             why: "If a flow takes a long time and has lots of packets, it can indicate latency, congestion, or retries. This is a rough heuristic and depends on correct timestamps.".to_string(),
+            next: "Press Enter to filter, then open Packets to see where time is spent. Compare with TCP retransmit hints and handshake issues for likely root cause.".to_string(),
             flow_indices,
         });
     }
@@ -256,6 +262,7 @@ mod tests {
             .find(|it| it.title.contains("DNS failures"))
             .unwrap();
         assert_eq!(item.flow_indices.len(), 1);
+        assert!(!item.next.trim().is_empty());
     }
 
     #[test]
@@ -306,6 +313,7 @@ mod tests {
             .find(|it| it.title.contains("High-latency"))
             .unwrap();
         assert_eq!(item.flow_indices.len(), 1);
+        assert!(!item.next.trim().is_empty());
     }
 
     #[test]
@@ -350,6 +358,7 @@ mod tests {
             .find(|it| it.title.contains("TCP reliability hints"))
             .unwrap();
         assert_eq!(item.flow_indices.len(), 1);
+        assert!(!item.next.trim().is_empty());
     }
 }
 

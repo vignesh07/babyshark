@@ -27,6 +27,7 @@ This is the concrete work list to get to a “PCAPs for humans” launch.
 - Weird: DNS failures detector (NXDOMAIN/SERVFAIL) (offline + live)
 - Weird: TCP retransmit / out-of-order hints (live via tshark fields)
 - Weird: high-latency flow heuristic (timestamp-based, rough)
+- Weird: per-detector “next click” suggestions in the UI
 
 ---
 
@@ -51,7 +52,7 @@ This is the concrete work list to get to a “PCAPs for humans” launch.
 1. **(shipped)** DNS failures detector (NXDOMAIN/SERVFAIL) (offline + live fields).
 2. **(shipped)** Out-of-order / retransmit hints (prefer tshark fields if available).
 3. **(shipped)** High-latency flow heuristic (requires correct timestamps).
-4. “Next click” suggestions per detector (structured, consistent).
+4. **(shipped)** “Next click” suggestions per detector (structured, consistent).
 
 ### D) Domains-mode completeness
 1. Top domains by connections.

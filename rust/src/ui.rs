@@ -1345,25 +1345,37 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
 
                     // Right panel: explanation
                     let selected = weird.items.get(app.weird_selected_row);
-                    let (title, why) = if let Some(it) = selected {
-                        (it.title.as_str(), it.why.as_str())
+                    let (title, why, next) = if let Some(it) = selected {
+                        (it.title.as_str(), it.why.as_str(), it.next.as_str())
                     } else {
-                        ("Weird stuff", "Pick a detector on the left.")
+                        ("Weird stuff", "Pick a detector on the left.", "")
                     };
 
-                    let expl = Paragraph::new(vec![
+                    let mut expl_lines: Vec<Line> = vec![
                         Line::from(Span::styled(
                             title,
                             Style::default().fg(c_accent()).add_modifier(Modifier::BOLD),
                         )),
                         Line::from(Span::raw("")),
                         Line::from(Span::styled(why, Style::default().fg(c_text()))),
-                        Line::from(Span::raw("")),
-                        Line::from(Span::styled(
-                            "Tip: Enter applies a flow filter so you can drill into packets/stream.",
+                    ];
+
+                    if !next.trim().is_empty() {
+                        expl_lines.push(Line::from(Span::raw("")));
+                        expl_lines.push(Line::from(Span::styled(
+                            format!("Next: {next}"),
                             Style::default().fg(c_muted()),
-                        )),
-                    ])
+                        )));
+                    }
+
+                    expl_lines.push(Line::from(Span::raw("")));
+                    expl_lines.push(Line::from(Span::styled(
+                        "Tip: Enter applies a flow filter so you can drill into packets/stream.",
+                        Style::default().fg(c_muted()),
+                    )));
+
+                    let expl = Paragraph::new(expl_lines)
+
                     .block(
                         Block::default()
                             .borders(Borders::ALL)
