@@ -1449,7 +1449,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                         it.stats.queries,
                                         it.stats.responses,
                                         it.stats.failures,
-                                        it.stats.ips.len()
+                                        it.stats.observed_ips.len().max(it.stats.dns_ips.len())
                                     ),
                                     Style::default().fg(if it.stats.failures > 0 {
                                         Color::Rgb(255, 215, 0)
@@ -1487,17 +1487,27 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
 
                     let selected = dom.items.get(app.domains_selected_row);
                     let right = if let Some(it) = selected {
-                        let ip_list = it
+                        let observed: Vec<String> = it
                             .stats
-                            .ips
+                            .observed_ips
                             .iter()
                             .take(12)
                             .map(|ip| ip.to_string())
-                            .collect::<Vec<_>>();
-                        let ips = if ip_list.is_empty() {
-                            "(no IPs parsed yet)".to_string()
+                            .collect();
+                        let dns: Vec<String> = it
+                            .stats
+                            .dns_ips
+                            .iter()
+                            .take(12)
+                            .map(|ip| ip.to_string())
+                            .collect();
+
+                        let (ip_title, ips) = if !observed.is_empty() {
+                            ("Observed IPs (from flows):", observed.join("\n"))
+                        } else if !dns.is_empty() {
+                            ("Resolved IPs (DNS A/AAAA):", dns.join("\n"))
                         } else {
-                            ip_list.join("\n")
+                            ("IP hints:", "(no IPs observed yet — likely DoH/DoT or cached DNS)".to_string())
                         };
                         vec![
                             Line::from(Span::styled(
@@ -1514,13 +1524,13 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             )),
                             Line::from(Span::raw("")),
                             Line::from(Span::styled(
-                                "Resolved IPs (A/AAAA):",
+                                ip_title,
                                 Style::default().fg(c_muted()).add_modifier(Modifier::BOLD),
                             )),
                             Line::from(Span::styled(ips, Style::default().fg(c_text()))),
                             Line::from(Span::raw("")),
                             Line::from(Span::styled(
-                                "Tip: Enter applies a subset filter (by resolved IPs if available).",
+                                "Tip: Enter applies a subset filter (prefers observed IPs; DNS IPs if available).",
                                 Style::default().fg(c_muted()),
                             )),
                         ]

@@ -8,7 +8,12 @@ pub struct DomainStats {
     pub queries: u64,
     pub responses: u64,
     pub failures: u64,
-    pub ips: BTreeSet<IpAddr>,
+
+    /// IPs learned from DNS answers (A/AAAA) when visible.
+    pub dns_ips: BTreeSet<IpAddr>,
+
+    /// IPs observed directly from flows that carried this hostname (works even with DoH).
+    pub observed_ips: BTreeSet<IpAddr>,
 
     /// Approx "connections" for this domain: number of flows associated with it.
     pub connections: u64,
@@ -70,7 +75,7 @@ pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex, sort: Domain
                                 e.failures += 1;
                             }
                             for ip in msg.answer_ips {
-                                e.ips.insert(ip);
+                                e.dns_ips.insert(ip);
                             }
                         } else {
                             e.queries += 1;
@@ -101,6 +106,12 @@ pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex, sort: Domain
 
         // HTTP Host hint (plaintext)
         if let Some(host) = &r.http_host {
+            if let Some(dst) = r.dst {
+                map.entry(host.clone()).or_default().observed_ips.insert(dst);
+            }
+            if let Some(src) = r.src {
+                map.entry(host.clone()).or_default().observed_ips.insert(src);
+            }
             if let Some(fk) = &r.flow {
                 let (canon, _flipped) = fk.canonical();
                 if let Some(flow_i) = flow_lookup.get(&canon) {
@@ -114,6 +125,12 @@ pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex, sort: Domain
 
         // TLS SNI hint
         if let Some(sni) = &r.tls_sni {
+            if let Some(dst) = r.dst {
+                map.entry(sni.clone()).or_default().observed_ips.insert(dst);
+            }
+            if let Some(src) = r.src {
+                map.entry(sni.clone()).or_default().observed_ips.insert(src);
+            }
             if let Some(fk) = &r.flow {
                 let (canon, _flipped) = fk.canonical();
                 if let Some(flow_i) = flow_lookup.get(&canon) {
@@ -129,8 +146,26 @@ pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex, sort: Domain
     // Build flow subsets per domain.
     let mut items: Vec<DomainItem> = Vec::new();
     for (domain, stats) in map {
-        let flow_indices: Vec<usize> = if stats.ips.is_empty() {
-            // If we don't have IPs, restrict to DNS traffic only.
+        let flow_indices: Vec<usize> = if !stats.observed_ips.is_empty() {
+            flows
+                .flows
+                .iter()
+                .enumerate()
+                .filter(|(_i, f)| {
+                    stats.observed_ips.contains(&f.key.src) || stats.observed_ips.contains(&f.key.dst)
+                })
+                .map(|(i, _)| i)
+                .collect()
+        } else if !stats.dns_ips.is_empty() {
+            flows
+                .flows
+                .iter()
+                .enumerate()
+                .filter(|(_i, f)| stats.dns_ips.contains(&f.key.src) || stats.dns_ips.contains(&f.key.dst))
+                .map(|(i, _)| i)
+                .collect()
+        } else {
+            // If we don't have any IPs yet, restrict to DNS traffic only.
             flows
                 .flows
                 .iter()
@@ -138,14 +173,6 @@ pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex, sort: Domain
                 .filter(|(_i, f)| {
                     f.key.proto == L4Proto::Udp && (f.key.src_port == 53 || f.key.dst_port == 53)
                 })
-                .map(|(i, _)| i)
-                .collect()
-        } else {
-            flows
-                .flows
-                .iter()
-                .enumerate()
-                .filter(|(_i, f)| stats.ips.contains(&f.key.src) || stats.ips.contains(&f.key.dst))
                 .map(|(i, _)| i)
                 .collect()
         };
