@@ -127,6 +127,7 @@ pub struct App {
 
     // domains-mode state
     pub domains_selected_row: usize,
+    pub domains_sort_by_bytes: bool,
 
     // active flow subset (used by Weird + Domains drilldown)
     pub flow_subset: Option<Vec<usize>>, // flow indices (into flows.flows)
@@ -175,6 +176,7 @@ impl App {
             visible_flow_indices: Vec::new(),
             weird_selected_row: 0,
             domains_selected_row: 0,
+            domains_sort_by_bytes: false,
             flow_subset: None,
             subset_label: None,
             filter: FlowFilter::default(),
@@ -1388,9 +1390,17 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                 }
 
                 View::Domains => {
-                    use crate::domains::build_domains_summary;
+                    use crate::domains::{build_domains_summary, DomainsSort};
 
-                    let dom = build_domains_summary(&app.rows, &app.flows);
+                    let dom = build_domains_summary(
+                        &app.rows,
+                        &app.flows,
+                        if app.domains_sort_by_bytes {
+                            DomainsSort::Bytes
+                        } else {
+                            DomainsSort::Connections
+                        },
+                    );
 
                     let items: Vec<ListItem> = dom
                         .items
@@ -1406,8 +1416,9 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                 Span::raw(UI_SPACER),
                                 Span::styled(
                                     format!(
-                                        "conn={} q={} r={} fail={} ips={}",
+                                        "conn={} bytes={:.1}KB q={} r={} fail={} ips={}",
                                         it.stats.connections,
+                                        (it.stats.bytes as f64) / 1024.0,
                                         it.stats.queries,
                                         it.stats.responses,
                                         it.stats.failures,
@@ -1434,7 +1445,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         .block(
                             Block::default()
                                 .borders(Borders::ALL)
-                                .title("Domains (DNS only)  (Enter show flows, c clear, Esc back)")
+                                .title("Domains (DNS only)  (Enter show flows, s sort, c clear, Esc back)")
                                 .style(Style::default().bg(c_panel())),
                         )
                         .highlight_style(
@@ -1969,6 +1980,11 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             app.apply_filter();
                         }
                     }
+                    KeyCode::Char('s') => {
+                        if app.view == View::Domains {
+                            app.domains_sort_by_bytes = !app.domains_sort_by_bytes;
+                        }
+                    }
                     KeyCode::Esc => {
                         if app.view == View::Weird {
                             app.view = View::Overview;
@@ -1995,7 +2011,15 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                 flow_state.select(Some(app.selected_row));
                             }
                         } else if app.view == View::Domains {
-                            let dom = crate::domains::build_domains_summary(&app.rows, &app.flows);
+                            let dom = crate::domains::build_domains_summary(
+                                &app.rows,
+                                &app.flows,
+                                if app.domains_sort_by_bytes {
+                                    crate::domains::DomainsSort::Bytes
+                                } else {
+                                    crate::domains::DomainsSort::Connections
+                                },
+                            );
                             if let Some(it) = dom.items.get(app.domains_selected_row) {
                                 let mut subset = it.flow_indices.clone();
                                 subset.sort_unstable();

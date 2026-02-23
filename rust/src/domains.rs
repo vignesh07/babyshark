@@ -12,6 +12,9 @@ pub struct DomainStats {
 
     /// Approx "connections" for this domain: number of flows associated with it.
     pub connections: u64,
+
+    /// Total bytes across associated flows (best-effort).
+    pub bytes: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -26,7 +29,13 @@ pub struct DomainsSummary {
     pub items: Vec<DomainItem>,
 }
 
-pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex) -> DomainsSummary {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DomainsSort {
+    Connections,
+    Bytes,
+}
+
+pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex, sort: DomainsSort) -> DomainsSummary {
     let mut map: BTreeMap<String, DomainStats> = BTreeMap::new();
     let mut conns: BTreeMap<String, BTreeSet<usize>> = BTreeMap::new();
 
@@ -122,7 +131,11 @@ pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex) -> DomainsSu
         };
 
         let mut stats = stats;
-        stats.connections = conns.get(&domain).map(|s| s.len() as u64).unwrap_or(0);
+        let conn_set = conns.get(&domain);
+        stats.connections = conn_set.map(|s| s.len() as u64).unwrap_or(0);
+        stats.bytes = conn_set
+            .map(|s| s.iter().filter_map(|i| flows.flows.get(*i)).map(|f| f.total_bytes).sum())
+            .unwrap_or(0);
 
         items.push(DomainItem {
             domain,
@@ -131,19 +144,34 @@ pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex) -> DomainsSu
         });
     }
 
-    // Sort by connections (flows), then failures, then activity.
-    items.sort_by(|a, b| {
-        b.stats
-            .connections
-            .cmp(&a.stats.connections)
-            .then_with(|| b.stats.failures.cmp(&a.stats.failures))
-            .then_with(|| {
-                let ac = a.stats.queries + a.stats.responses;
-                let bc = b.stats.queries + b.stats.responses;
-                bc.cmp(&ac)
-            })
-            .then_with(|| a.domain.cmp(&b.domain))
-    });
+    match sort {
+        DomainsSort::Connections => {
+            // Sort by connections (flows), then failures, then activity.
+            items.sort_by(|a, b| {
+                b.stats
+                    .connections
+                    .cmp(&a.stats.connections)
+                    .then_with(|| b.stats.failures.cmp(&a.stats.failures))
+                    .then_with(|| {
+                        let ac = a.stats.queries + a.stats.responses;
+                        let bc = b.stats.queries + b.stats.responses;
+                        bc.cmp(&ac)
+                    })
+                    .then_with(|| a.domain.cmp(&b.domain))
+            });
+        }
+        DomainsSort::Bytes => {
+            // Sort by bytes (desc), then connections, then failures.
+            items.sort_by(|a, b| {
+                b.stats
+                    .bytes
+                    .cmp(&a.stats.bytes)
+                    .then_with(|| b.stats.connections.cmp(&a.stats.connections))
+                    .then_with(|| b.stats.failures.cmp(&a.stats.failures))
+                    .then_with(|| a.domain.cmp(&b.domain))
+            });
+        }
+    }
 
     DomainsSummary { items }
 }
@@ -340,9 +368,56 @@ mod tests {
             mk(2, "b.com", 3333, 80),
         ];
         let flows = crate::flow::FlowIndex::build(&rows);
-        let dom = build_domains_summary(&rows, &flows);
+        let dom = build_domains_summary(&rows, &flows, DomainsSort::Connections);
 
         assert_eq!(dom.items.first().unwrap().domain, "a.com");
         assert_eq!(dom.items.first().unwrap().stats.connections, 2);
+    }
+
+    #[test]
+    fn domains_sort_by_bytes() {
+        use chrono::{TimeZone, Utc};
+
+        let mk = |idx: usize, host: &str, len: usize, sp: u16, dp: u16| PacketRow {
+            index: idx,
+            ts: Utc.timestamp_opt(0, 0).unwrap(),
+            len,
+            src: Some("10.0.0.2".parse().unwrap()),
+            dst: Some("93.184.216.34".parse().unwrap()),
+            proto: Some(L4Proto::Tcp),
+            src_port: Some(sp),
+            dst_port: Some(dp),
+            summary: String::new(),
+            flow: Some(crate::pcap::FlowKey {
+                src: "10.0.0.2".parse().unwrap(),
+                dst: "93.184.216.34".parse().unwrap(),
+                src_port: sp,
+                dst_port: dp,
+                proto: L4Proto::Tcp,
+            }),
+            flow_dir: Some(crate::pcap::FlowDir::AtoB),
+            tcp_seq: None,
+            tcp_ack: None,
+            tcp_flags: None,
+            payload: Vec::new(),
+            tcp_retransmission: false,
+            tcp_out_of_order: false,
+            dns_qname: None,
+            dns_rcode: None,
+            http_host: Some(host.to_string()),
+            tls_sni: None,
+        };
+
+        // a.com: 1 flow but lots of bytes; b.com: 2 flows but tiny.
+        let rows = vec![
+            mk(0, "a.com", 1500, 1111, 80),
+            mk(1, "b.com", 60, 2222, 80),
+            mk(2, "b.com", 60, 3333, 80),
+        ];
+        let flows = crate::flow::FlowIndex::build(&rows);
+        let dom = build_domains_summary(&rows, &flows, DomainsSort::Bytes);
+
+        assert_eq!(dom.items.first().unwrap().domain, "a.com");
+        assert!(dom.items.first().unwrap().stats.bytes >= 1500);
     }
 }
