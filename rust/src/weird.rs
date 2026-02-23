@@ -24,6 +24,7 @@ pub enum WeirdDetector {
     TcpResets,
     TcpHandshakeNotCompleted,
     DnsFailures,
+    TcpReliabilityHints,
 }
 
 fn row_has_tcp_flag(row: &PacketRow, flag: u16) -> bool {
@@ -133,6 +134,36 @@ pub fn build_weird_summary(rows: &[PacketRow], flows: &FlowIndex) -> WeirdSummar
         });
     }
 
+    // Detector: TCP retransmissions / out-of-order (live tshark hints)
+    {
+        let mut flow_indices: Vec<usize> = Vec::new();
+
+        for (i, fl) in flows.flows.iter().enumerate() {
+            if fl.key.proto != L4Proto::Tcp {
+                continue;
+            }
+
+            let mut hinted = false;
+            for pi in fl.packet_indices.iter().copied() {
+                let Some(r) = rows.get(pi) else { continue };
+                if r.tcp_retransmission || r.tcp_out_of_order {
+                    hinted = true;
+                    break;
+                }
+            }
+
+            if hinted {
+                flow_indices.push(i);
+            }
+        }
+
+        out.push(WeirdItem {
+            title: "TCP reliability hints (retransmits / out-of-order)".to_string(),
+            why: "Retransmissions and out-of-order delivery often mean packet loss or jitter. A few can be normal on Wi‑Fi, but lots can cause slow loads, buffering, or timeouts.".to_string(),
+            flow_indices,
+        });
+    }
+
     // Sort: most interesting first.
     out.sort_by_key(|it| std::cmp::Reverse(it.flow_indices.len()));
 
@@ -169,6 +200,8 @@ mod tests {
             tcp_ack: None,
             tcp_flags: None,
             payload: Vec::new(),
+            tcp_retransmission: false,
+            tcp_out_of_order: false,
             dns_qname: Some("example.com".to_string()),
             dns_rcode: rcode,
             http_host: None,
@@ -184,6 +217,50 @@ mod tests {
             .items
             .iter()
             .find(|it| it.title.contains("DNS failures"))
+            .unwrap();
+        assert_eq!(item.flow_indices.len(), 1);
+    }
+
+    #[test]
+    fn tcp_reliability_detector_uses_live_hints() {
+        let mk = |idx: usize, retrans: bool| PacketRow {
+            index: idx,
+            ts: chrono::Utc::now(),
+            len: 60,
+            src: Some("10.0.0.2".parse().unwrap()),
+            dst: Some("93.184.216.34".parse().unwrap()),
+            proto: Some(L4Proto::Tcp),
+            src_port: Some(55555),
+            dst_port: Some(443),
+            summary: String::new(),
+            flow: Some(crate::pcap::FlowKey {
+                src: "10.0.0.2".parse().unwrap(),
+                dst: "93.184.216.34".parse().unwrap(),
+                src_port: 55555,
+                dst_port: 443,
+                proto: L4Proto::Tcp,
+            }),
+            flow_dir: Some(crate::pcap::FlowDir::AtoB),
+            tcp_seq: None,
+            tcp_ack: None,
+            tcp_flags: None,
+            payload: Vec::new(),
+            tcp_retransmission: retrans,
+            tcp_out_of_order: false,
+            dns_qname: None,
+            dns_rcode: None,
+            http_host: None,
+            tls_sni: None,
+        };
+
+        let rows = vec![mk(0, true), mk(1, false)];
+        let flows = FlowIndex::build(&rows);
+        let w = build_weird_summary(&rows, &flows);
+
+        let item = w
+            .items
+            .iter()
+            .find(|it| it.title.contains("TCP reliability hints"))
             .unwrap();
         assert_eq!(item.flow_indices.len(), 1);
     }

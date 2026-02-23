@@ -75,6 +75,10 @@ pub struct PacketRow {
     pub tcp_flags: Option<u16>,
     pub payload: Vec<u8>,
 
+    // Live / analysis hints (best-effort; may be missing offline).
+    pub tcp_retransmission: bool,
+    pub tcp_out_of_order: bool,
+
     // Optional protocol hints extracted from payload (best-effort).
     pub dns_qname: Option<String>,
     pub dns_rcode: Option<u16>,
@@ -105,6 +109,8 @@ fn decode_packet(index: usize, ts: DateTime<Utc>, data: &[u8]) -> PacketRow {
         tcp_ack: None,
         tcp_flags: None,
         payload: Vec::new(),
+        tcp_retransmission: false,
+        tcp_out_of_order: false,
         dns_qname: None,
         dns_rcode: None,
         http_host: None,

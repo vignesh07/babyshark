@@ -200,6 +200,7 @@ Raw tshark error:
 /// tcp.srcport, tcp.dstport, udp.srcport, udp.dstport,
 /// _ws.col.Protocol,
 /// tcp.flags,
+/// tcp.analysis.retransmission, tcp.analysis.out_of_order,
 /// dns.qry.name, dns.flags.rcode, dns.a, dns.aaaa,
 /// tls.handshake.extensions_server_name, http.host
 pub fn parse_tshark_fields_line(line: &str) -> Option<PacketRow> {
@@ -253,9 +254,12 @@ pub fn parse_tshark_fields_line(line: &str) -> Option<PacketRow> {
     let ts = epoch_to_ts(epoch);
 
     // Extended live fields (indices based on `build_tshark_live_args`).
-    let dns_qname = parts.get(12).map(|s| s.trim()).filter(|s| !s.is_empty());
-    let tls_sni = parts.get(16).map(|s| s.trim()).filter(|s| !s.is_empty());
-    let http_host = parts.get(17).map(|s| s.trim()).filter(|s| !s.is_empty());
+    let tcp_retransmission = parts.get(12).is_some_and(|s| !s.trim().is_empty());
+    let tcp_out_of_order = parts.get(13).is_some_and(|s| !s.trim().is_empty());
+
+    let dns_qname = parts.get(14).map(|s| s.trim()).filter(|s| !s.is_empty());
+    let tls_sni = parts.get(18).map(|s| s.trim()).filter(|s| !s.is_empty());
+    let http_host = parts.get(19).map(|s| s.trim()).filter(|s| !s.is_empty());
 
     let mut row = PacketRow {
         index: 0, // assigned by UI when appended
@@ -273,9 +277,11 @@ pub fn parse_tshark_fields_line(line: &str) -> Option<PacketRow> {
         tcp_ack: None,
         tcp_flags,
         payload: Vec::new(),
+        tcp_retransmission,
+        tcp_out_of_order,
         dns_qname: dns_qname.map(|s| s.to_string()),
         dns_rcode: parts
-            .get(13)
+            .get(15)
             .and_then(|s| {
                 let s = s.trim();
                 if s.is_empty() {
@@ -378,6 +384,11 @@ fn build_tshark_live_args(
             "_ws.col.Protocol",
             "-e",
             "tcp.flags",
+            // TCP analysis hints (best-effort; requires Wireshark dissector).
+            "-e",
+            "tcp.analysis.retransmission",
+            "-e",
+            "tcp.analysis.out_of_order",
             // Live-mode hostname extraction (for Domains/Explain parity).
             "-e",
             "dns.qry.name",
@@ -512,8 +523,8 @@ Copyright ...
 
     #[test]
     fn parse_tshark_fields_line_tcp() {
-        // epoch, len, ip.src, ip.dst, ipv6.src, ipv6.dst, tcp sp/dp, udp sp/dp, proto col, flags, dns, sni, host
-        let line = "1700000000.123	60	1.2.3.4	5.6.7.8			12345	443			TCP	0x0012						";
+        // epoch, len, ip.src, ip.dst, ipv6.src, ipv6.dst, tcp sp/dp, udp sp/dp, proto col, flags, retrans, ooo, dns, rcode, a, aaaa, sni, host
+        let line = "1700000000.123	60	1.2.3.4	5.6.7.8			12345	443			TCP	0x0012								";
         let row = parse_tshark_fields_line(line).unwrap();
         assert_eq!(row.len, 60);
         assert_eq!(row.proto, Some(L4Proto::Tcp));
@@ -525,8 +536,8 @@ Copyright ...
 
     #[test]
     fn parse_tshark_fields_line_udp_ipv6() {
-        // columns: epoch, len, ip.src, ip.dst, ipv6.src, ipv6.dst, tcp sp/dp, udp sp/dp, proto col, flags, dns, sni, host
-        let line = "1700000000.000	42			2001:db8::1	2001:db8::2			53	5353	UDP						";
+        // columns: epoch, len, ip.src, ip.dst, ipv6.src, ipv6.dst, tcp sp/dp, udp sp/dp, proto col, flags, retrans, ooo, dns, rcode, a, aaaa, sni, host
+        let line = "1700000000.000	42			2001:db8::1	2001:db8::2			53	5353	UDP								";
         let row = parse_tshark_fields_line(line).unwrap();
         assert_eq!(row.proto, Some(L4Proto::Udp));
         assert_eq!(row.src_port, Some(53));
@@ -535,12 +546,14 @@ Copyright ...
 
     #[test]
     fn parse_tshark_fields_line_hostname_hints() {
-        // Ensure we populate PacketRow.{dns_qname,tls_sni,http_host} from tshark fields (live mode).
-        let line = "1700000001.000	74	10.0.0.2	1.1.1.1			55555	443			TLS	0x0018	example.com	0			www.example.org	example.com";
+        // Ensure we populate PacketRow.{dns_qname,dns_rcode,tls_sni,http_host} from tshark fields (live mode).
+        let line = "1700000001.000	74	10.0.0.2	1.1.1.1			55555	443			TLS	0x0018			example.com	0			www.example.org	example.com";
         let row = parse_tshark_fields_line(line).unwrap();
         assert_eq!(row.dns_qname.as_deref(), Some("example.com"));
         assert_eq!(row.dns_rcode, Some(0));
         assert_eq!(row.tls_sni.as_deref(), Some("www.example.org"));
         assert_eq!(row.http_host.as_deref(), Some("example.com"));
+        assert!(!row.tcp_retransmission);
+        assert!(!row.tcp_out_of_order);
     }
 }

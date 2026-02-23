@@ -295,6 +295,8 @@ mod tests {
             tcp_ack: None,
             tcp_flags: None,
             payload: p.clone(),
+            tcp_retransmission: false,
+            tcp_out_of_order: false,
             dns_qname: None,
             dns_rcode: None,
             http_host: None,
