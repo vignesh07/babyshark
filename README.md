@@ -107,6 +107,33 @@ tshark -D
 
 ---
 
+## Troubleshooting
+
+### `babyshark` updated in git but my command still runs old behavior
+
+If you installed with `cargo install`, you need to reinstall after pulling:
+
+```bash
+cd babyshark/rust
+cargo install --path . --force
+```
+
+### Live capture fails (permissions)
+
+Try running with sudo:
+
+```bash
+sudo babyshark --live en0
+```
+
+If that works, you likely need to configure capture permissions (`dumpcap`, `wireshark` group, etc.) on your OS.
+
+### Domains shows `ips=0` for everything
+
+This often happens when DNS answers aren’t visible (DoH/DoT or cached). Babyshark will still show **Observed IPs (from flows)** using TLS SNI / HTTP Host hints when available.
+
+---
+
 ## Usage
 
 ### Offline PCAP
