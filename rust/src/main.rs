@@ -64,7 +64,7 @@ fn main() -> Result<()> {
 
     if let Some(iface) = args.live {
         babyshark::live::tshark_live_preflight(&iface)?;
-        let rx = babyshark::live::spawn_live_capture_tshark_fields(
+        let (rx, err_rx) = babyshark::live::spawn_live_capture_tshark_fields(
             iface.clone(),
             args.bpf.clone(),
             args.dfilter.clone(),
@@ -76,6 +76,7 @@ fn main() -> Result<()> {
         );
         app.live_iface = Some(iface);
         app.live_rx = Some(rx);
+        app.live_err_rx = Some(err_rx);
         babyshark::ui::run_tui(&mut app)?;
         return Ok(());
     }

@@ -102,6 +102,8 @@ pub struct App {
     pub pcap_path: PathBuf,
     pub live_iface: Option<String>,
     pub live_rx: Option<std::sync::mpsc::Receiver<crate::pcap::PacketRow>>,
+    pub live_err_rx: Option<std::sync::mpsc::Receiver<String>>,
+    pub live_last_stderr: Option<String>,
     pub live_total_packets: usize,
     pub live_pps: f64,
     pub live_capture_start: std::time::Instant,
@@ -161,6 +163,8 @@ impl App {
             pcap_path,
             live_iface: None,
             live_rx: None,
+            live_err_rx: None,
+            live_last_stderr: None,
             live_total_packets: 0,
             live_pps: 0.0,
             live_capture_start: std::time::Instant::now(),
@@ -283,6 +287,17 @@ impl App {
     fn poll_live(&mut self) {
         const LIVE_CAP: usize = 20_000;
         const REBUILD_EVERY: usize = 200;
+
+        // Drain stderr (even if idle) so we can surface useful live errors.
+        if let Some(err_rx) = self.live_err_rx.as_ref() {
+            // Keep only the most recent line.
+            while let Ok(line) = err_rx.try_recv() {
+                let line = line.trim().to_string();
+                if !line.is_empty() {
+                    self.live_last_stderr = Some(line);
+                }
+            }
+        }
 
         let Some(rx) = self.live_rx.as_ref() else {
             return;
@@ -967,14 +982,17 @@ fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
     if app.live_iface.is_some() {
         let secs = app.live_capture_start.elapsed().as_secs();
         let dropped = app.live_dropped_packets;
+        let mut msg = format!(
+            "Live: {secs}s   pps~{:.1}   dropped~{dropped}",
+            app.live_pps
+        );
+        if let Some(e) = &app.live_last_stderr {
+            // Keep it short; the details panel can show full errors later.
+            msg.push_str("   | last: ");
+            msg.push_str(&e.chars().take(60).collect::<String>());
+        }
         rows.push(OverviewRow {
-            label: Line::from(Span::styled(
-                format!(
-                    "Live: {secs}s   pps~{:.1}   dropped~{dropped}",
-                    app.live_pps
-                ),
-                Style::default().fg(c_muted()),
-            )),
+            label: Line::from(Span::styled(msg, Style::default().fg(c_muted()))),
             action: None,
         });
     }

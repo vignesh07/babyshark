@@ -430,10 +430,11 @@ pub fn spawn_live_capture_tshark_fields(
     iface: String,
     bpf: Option<String>,
     dfilter: Option<String>,
-) -> Result<Receiver<PacketRow>> {
+) -> Result<(Receiver<PacketRow>, Receiver<String>)> {
     let _ver = tshark_version().context("tshark not available (required for --live)")?;
 
     let (tx, rx) = mpsc::channel::<PacketRow>();
+    let (tx_err, rx_err) = mpsc::channel::<String>();
 
     thread::spawn(move || {
         let mut child = match spawn_tshark_child_fields(
@@ -451,6 +452,20 @@ pub fn spawn_live_capture_tshark_fields(
             return;
         };
 
+        // Drain stderr so tshark can't block on a full stderr pipe.
+        if let Some(stderr) = child.stderr.take() {
+            let tx_err2 = tx_err.clone();
+            thread::spawn(move || {
+                let reader = BufReader::new(stderr);
+                for line in reader.lines().flatten() {
+                    // Only keep recent errors; UI stores last line.
+                    if tx_err2.send(line).is_err() {
+                        break;
+                    }
+                }
+            });
+        }
+
         let reader = BufReader::new(stdout);
         for line in reader.lines().flatten() {
             if let Some(row) = parse_tshark_fields_line(&line) {
@@ -460,11 +475,14 @@ pub fn spawn_live_capture_tshark_fields(
             }
         }
 
+        // Let the UI know tshark exited.
+        let _ = tx_err.send("[tshark exited]".to_string());
+
         let _ = child.kill();
         let _ = child.wait();
     });
 
-    Ok(rx)
+    Ok((rx, rx_err))
 }
 
 #[cfg(test)]
