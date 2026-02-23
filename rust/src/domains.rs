@@ -48,7 +48,7 @@ pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex, sort: Domain
     }
 
     for r in rows {
-        // DNS source (UDP/53 payload parse)
+        // DNS source (prefer payload parse; fall back to live hints)
         if r.proto == Some(L4Proto::Udp) {
             // DNS is usually 53/udp.
             let sp = r.src_port.unwrap_or(0);
@@ -75,6 +75,25 @@ pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex, sort: Domain
                         } else {
                             e.queries += 1;
                         }
+                    }
+                } else if let Some(qname) = r.dns_qname.as_deref() {
+                    // Live mode (no payload): tshark fields can provide qname + rcode.
+                    if let Some(fk) = &r.flow {
+                        let (canon, _flipped) = fk.canonical();
+                        if let Some(flow_i) = flow_lookup.get(&canon) {
+                            conns.entry(qname.to_string()).or_default().insert(*flow_i);
+                        }
+                    }
+
+                    let e = map.entry(qname.to_string()).or_default();
+                    // Best-effort: if we saw an rcode, treat it as a response.
+                    if let Some(rcode) = r.dns_rcode {
+                        e.responses += 1;
+                        if rcode != 0 {
+                            e.failures += 1;
+                        }
+                    } else {
+                        e.queries += 1;
                     }
                 }
             }
@@ -435,6 +454,48 @@ mod tests {
 
         assert_eq!(dom.items.first().unwrap().domain, "a.com");
         assert!(dom.items.first().unwrap().stats.bytes >= 1500);
+    }
+
+    #[test]
+    fn domains_live_uses_dns_qname_hint() {
+        use chrono::{TimeZone, Utc};
+
+        let mk = |idx: usize, qname: &str, rcode: Option<u16>| PacketRow {
+            index: idx,
+            ts: Utc.timestamp_opt(0, 0).unwrap(),
+            len: 60,
+            src: Some("10.0.0.2".parse().unwrap()),
+            dst: Some("1.1.1.1".parse().unwrap()),
+            proto: Some(L4Proto::Udp),
+            src_port: Some(55555),
+            dst_port: Some(53),
+            summary: String::new(),
+            flow: Some(crate::pcap::FlowKey {
+                src: "10.0.0.2".parse().unwrap(),
+                dst: "1.1.1.1".parse().unwrap(),
+                src_port: 55555,
+                dst_port: 53,
+                proto: L4Proto::Udp,
+            }),
+            flow_dir: Some(crate::pcap::FlowDir::AtoB),
+            tcp_seq: None,
+            tcp_ack: None,
+            tcp_flags: None,
+            payload: Vec::new(),
+            tcp_retransmission: false,
+            tcp_out_of_order: false,
+            dns_qname: Some(qname.to_string()),
+            dns_rcode: rcode,
+            http_host: None,
+            tls_sni: None,
+        };
+
+        let rows = vec![mk(0, "live.example", Some(3)), mk(1, "ok.example", Some(0))];
+        let flows = crate::flow::FlowIndex::build(&rows);
+        let dom = build_domains_summary(&rows, &flows, DomainsSort::Failures);
+
+        assert_eq!(dom.items.first().unwrap().domain, "live.example");
+        assert!(dom.items.first().unwrap().stats.failures >= 1);
     }
 
     #[test]
