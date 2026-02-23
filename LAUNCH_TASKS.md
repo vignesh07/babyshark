@@ -20,6 +20,7 @@ This is the concrete work list to get to a “PCAPs for humans” launch.
   - Drilldown: domain → subset flows (via resolved IPs)
 - Explain modal (`?`) for selected flow: plain-English summary + next steps (best-effort)
 - Live mode: tshark fields populate `PacketRow` hostname hints (`dns.qry.name`, TLS SNI, HTTP Host)
+- Overview: packets/sec sparkline (coarse buckets)
 
 ---
 
@@ -35,7 +36,7 @@ This is the concrete work list to get to a “PCAPs for humans” launch.
 4. Confirm: Domains view shows hostnames during `--live` capture.
 
 ### B) Overview completeness
-1. Add packets/sec sparkline (simple, coarse bucketed).
+1. **(shipped)** Add packets/sec sparkline (simple, coarse bucketed).
 2. Add “Top talkers by packets” (not just bytes).
 3. Add “Top flows by packets” (not just bytes).
 4. Live mode: show capture duration + approx pps + dropped packets if available.

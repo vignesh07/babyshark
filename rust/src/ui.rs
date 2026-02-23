@@ -927,6 +927,31 @@ fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
         )),
         action: None,
     });
+
+    // Packets/sec sparkline (coarse buckets).
+    if !ov.pps_buckets.is_empty() {
+        let max = ov.pps_buckets.iter().copied().max().unwrap_or(0);
+        let glyphs: [char; 9] = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+        let spark: String = if max == 0 {
+            "".to_string()
+        } else {
+            ov.pps_buckets
+                .iter()
+                .map(|v| {
+                    let idx = ((*v as u64) * 8 / (max as u64)).min(8) as usize;
+                    glyphs[idx]
+                })
+                .collect()
+        };
+
+        rows.push(OverviewRow {
+            label: Line::from(Span::styled(
+                format!("pps: {spark}  (max {max}/bucket)"),
+                Style::default().fg(c_muted()),
+            )),
+            action: None,
+        });
+    }
     rows.push(OverviewRow {
         label: Line::from(Span::styled(
             format!("Top flow: {top_flow}"),

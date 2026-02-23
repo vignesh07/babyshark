@@ -21,6 +21,12 @@ pub struct OverviewSummary {
     pub total_packets: usize,
     pub total_bytes: u64,
     pub protos: ProtoCounts,
+
+    /// Coarse packets-per-second buckets for a tiny sparkline in the Overview.
+    ///
+    /// We pick a bucket width such that we produce at most ~30 buckets.
+    pub pps_buckets: Vec<u32>,
+
     pub top_ports: Vec<(u16, HostCounts)>,
     pub top_hosts: Vec<(IpAddr, HostCounts)>,
     pub top_flows: Vec<FlowStats>,
@@ -32,11 +38,60 @@ fn bump(m: &mut HashMap<u64, HostCounts>, k: u64, bytes: u64) {
     e.bytes += bytes;
 }
 
+fn build_pps_buckets(rows: &[PacketRow]) -> Vec<u32> {
+    // Keep it simple and stable: we bucket by wall-clock deltas within the capture.
+    // If timestamps are missing or only a single packet, return an empty sparkline.
+    let first = rows.first().map(|r| r.ts);
+    let last = rows.last().map(|r| r.ts);
+    let (Some(start), Some(end)) = (first, last) else {
+        return Vec::new();
+    };
+
+    let mut duration_s = (end - start).num_seconds();
+    if duration_s < 0 {
+        duration_s = 0;
+    }
+
+    // If everything happened at the same second, don’t pretend we have a time-series.
+    if duration_s == 0 {
+        return Vec::new();
+    }
+
+    // Aim for <= 30 buckets (coarse), with at least 1s bucket width.
+    let bucket_width_s: i64 = ((duration_s as f64) / 30.0).ceil() as i64;
+    let bucket_width_s = bucket_width_s.max(1);
+
+    // Duration is delta between first/last timestamps. For inclusive bucketing, we need +1 bucket.
+    let max_dt_s = duration_s;
+    let bucket_count: usize = ((max_dt_s / bucket_width_s) + 1) as usize;
+
+    let mut buckets = vec![0u32; bucket_count.max(1)];
+
+    for r in rows {
+        let dt = (r.ts - start).num_seconds();
+        if dt < 0 {
+            continue;
+        }
+        let idx = (dt / bucket_width_s) as usize;
+        if let Some(b) = buckets.get_mut(idx) {
+            *b = b.saturating_add(1);
+        }
+    }
+
+    // Trim trailing zeros so the UI doesn’t draw a flat tail.
+    while buckets.last().is_some_and(|v| *v == 0) {
+        buckets.pop();
+    }
+
+    buckets
+}
+
 pub fn build_overview(rows: &[PacketRow], flows: &FlowIndex, limit: usize) -> OverviewSummary {
     let limit = limit.max(1).min(50);
 
     let mut out = OverviewSummary::default();
     out.total_packets = rows.len();
+    out.pps_buckets = build_pps_buckets(rows);
 
     let mut ports: HashMap<u64, HostCounts> = HashMap::new();
     let mut hosts: HashMap<u64, HostCounts> = HashMap::new();
@@ -133,6 +188,7 @@ mod tests {
         assert_eq!(ov.total_packets, 2);
         assert_eq!(ov.protos.tcp, 2);
         assert_eq!(ov.protos.udp, 0);
+        // Fixture is tiny; pps buckets may be empty (same-second capture), but should never panic.
 
         // ports should include 80 and 1234
         let ports: Vec<u16> = ov.top_ports.iter().map(|p| p.0).collect();
@@ -142,5 +198,36 @@ mod tests {
         // top flows should include the single flow
         assert_eq!(ov.top_flows.len(), 1);
         assert_eq!(ov.top_flows[0].key.proto, L4Proto::Tcp);
+    }
+
+    #[test]
+    fn pps_buckets_are_coarse_and_stable() {
+        use chrono::{TimeZone, Utc};
+
+        let mk = |sec: i64| PacketRow {
+            index: 0,
+            ts: Utc.timestamp_opt(sec, 0).unwrap(),
+            len: 60,
+            src: None,
+            dst: None,
+            proto: Some(L4Proto::Tcp),
+            src_port: None,
+            dst_port: None,
+            summary: String::new(),
+            flow: None,
+            flow_dir: None,
+            tcp_seq: None,
+            tcp_ack: None,
+            tcp_flags: None,
+            payload: Vec::new(),
+            dns_qname: None,
+            http_host: None,
+            tls_sni: None,
+        };
+
+        // 6 packets spread over ~3 seconds.
+        let rows = vec![mk(0), mk(0), mk(1), mk(1), mk(2), mk(3)];
+        let b = build_pps_buckets(&rows);
+        assert_eq!(b, vec![2, 2, 1, 1]);
     }
 }
