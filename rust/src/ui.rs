@@ -1580,11 +1580,11 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                 .borders(Borders::ALL)
                                 .title(if let Some(iface) = &app.live_iface {
                                     format!(
-                                        "Flows [LIVE {iface}] ({:.1} pps)  (Enter packets, / filter, t/u toggles, b bookmark, E export)",
+                                        "Flows [LIVE {iface}] ({:.1} pps)  (Enter packets, / filter, t/u toggles, b bookmark, E export, o overview)",
                                         app.live_pps
                                     )
                                 } else {
-                                    "Flows  (Enter packets, / filter, t/u toggles, b bookmark, E export)".to_string()
+                                    "Flows  (Enter packets, / filter, t/u toggles, b bookmark, E export, o overview)".to_string()
                                 })
                                 .style(Style::default().bg(c_panel())),
                         )
