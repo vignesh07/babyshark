@@ -1736,8 +1736,8 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                 }
             }
 
-            // Details panel (for non-Weird views)
-            if app.view != View::Weird {
+            // Details panel (skip for views that own the right pane)
+            if !matches!(app.view, View::Weird | View::Domains | View::Overview) {
                 let detail = if let Some(fl) = app.selected_flow() {
                     let a =
                         format!("A→B: {} pkts / {} bytes", fl.a_to_b.packets, fl.a_to_b.bytes);
