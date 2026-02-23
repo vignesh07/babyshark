@@ -56,6 +56,7 @@ fn c_muted() -> Color {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum View {
+    Overview,
     Flows,
     Packets,
     Stream,
@@ -131,7 +132,7 @@ impl App {
             casefile,
             rows,
             flows,
-            view: View::Flows,
+            view: View::Overview,
             selected_row: 0,
             visible_flow_indices: Vec::new(),
             filter: FlowFilter::default(),
@@ -843,6 +844,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                 .split(size);
 
             let title = match app.view {
+                View::Overview => "Overview",
                 View::Flows => "Flows",
                 View::Packets => "Packets",
                 View::Stream => "Follow Stream",
@@ -888,6 +890,53 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                 .split(chunks[1]);
 
             match app.view {
+                View::Overview => {
+                    use crate::summary::build_overview;
+
+                    let ov = build_overview(&app.rows, &app.flows, 10);
+
+                    let mut lines: Vec<ratatui::text::Line> = Vec::new();
+                    lines.push(ratatui::text::Line::from(vec![
+                        ratatui::text::Span::styled("Traffic mix", ratatui::style::Style::default().fg(c_text()).add_modifier(ratatui::style::Modifier::BOLD)),
+                    ]));
+                    lines.push(ratatui::text::Line::from(ratatui::text::Span::styled(
+                        format!("TCP: {}  UDP: {}  Other: {}", ov.protos.tcp, ov.protos.udp, ov.protos.other),
+                        ratatui::style::Style::default().fg(c_muted()),
+                    )));
+                    lines.push(ratatui::text::Line::from(ratatui::text::Span::raw("")));
+
+                    lines.push(ratatui::text::Line::from(vec![
+                        ratatui::text::Span::styled("Top ports (by bytes)", ratatui::style::Style::default().fg(c_text()).add_modifier(ratatui::style::Modifier::BOLD)),
+                    ]));
+                    for (port, c) in ov.top_ports.iter().take(8) {
+                        lines.push(ratatui::text::Line::from(ratatui::text::Span::styled(
+                            format!("{:>5}  bytes={:<10} pkts={}", port, c.bytes, c.packets),
+                            ratatui::style::Style::default().fg(c_text()),
+                        )));
+                    }
+                    lines.push(ratatui::text::Line::from(ratatui::text::Span::raw("")));
+
+                    lines.push(ratatui::text::Line::from(vec![
+                        ratatui::text::Span::styled("Top hosts (IPv4 only)", ratatui::style::Style::default().fg(c_text()).add_modifier(ratatui::style::Modifier::BOLD)),
+                    ]));
+                    for (ip, c) in ov.top_hosts.iter().take(8) {
+                        lines.push(ratatui::text::Line::from(ratatui::text::Span::styled(
+                            format!("{:<15}  bytes={:<10} pkts={}", ip, c.bytes, c.packets),
+                            ratatui::style::Style::default().fg(c_text()),
+                        )));
+                    }
+
+                    let p = ratatui::widgets::Paragraph::new(lines)
+                        .block(
+                            ratatui::widgets::Block::default()
+                                .borders(ratatui::widgets::Borders::ALL)
+                                .title("Overview  (F flows)")
+                                .style(ratatui::style::Style::default().bg(c_panel())),
+                        )
+                        .wrap(ratatui::widgets::Wrap { trim: true });
+                    f.render_widget(p, body_chunks[0]);
+                }
+
                 View::Flows => {
                     let items: Vec<ListItem> = app
                         .visible_flow_indices
@@ -1225,6 +1274,8 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                 }
 
                 match key.code {
+                    KeyCode::Char('o') => { app.view = View::Overview; },
+                    KeyCode::Char('f') => { app.view = View::Flows; },
                     KeyCode::Char('q') => return Ok(()),
                     KeyCode::Char('/') => {
                         if app.view == View::Flows {
