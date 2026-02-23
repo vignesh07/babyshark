@@ -1,0 +1,87 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build binaries (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - name: macos-arm64
+            os: macos-14
+            target: aarch64-apple-darwin
+          - name: windows-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            rust -> target
+
+      - name: Test
+        shell: bash
+        run: |
+          cargo test --manifest-path rust/Cargo.toml
+
+      - name: Build
+        shell: bash
+        run: |
+          cargo build --manifest-path rust/Cargo.toml --release --target ${{ matrix.target }}
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euxo pipefail
+          BIN_DIR="rust/target/${{ matrix.target }}/release"
+          OUT_DIR="dist"
+          mkdir -p "$OUT_DIR"
+          VERSION_TAG="${GITHUB_REF_NAME}"
+          if [[ "${{ matrix.os }}" == windows* ]]; then
+            BIN_NAME="babyshark.exe"
+          else
+            BIN_NAME="babyshark"
+          fi
+          cp "$BIN_DIR/$BIN_NAME" "$OUT_DIR/"
+          cd "$OUT_DIR"
+          ASSET_BASE="babyshark-${VERSION_TAG}-${{ matrix.name }}"
+          if [[ "${{ matrix.os }}" == windows* ]]; then
+            7z a "${ASSET_BASE}.zip" "$BIN_NAME"
+            echo "asset=${ASSET_BASE}.zip" >> $GITHUB_OUTPUT
+          else
+            tar -czf "${ASSET_BASE}.tar.gz" "$BIN_NAME"
+            echo "asset=${ASSET_BASE}.tar.gz" >> $GITHUB_OUTPUT
+          fi
+        id: pkg
+
+      - name: Upload artifact (for debugging)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: dist/*
+
+      - name: Create GitHub Release + upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
