@@ -25,6 +25,7 @@ pub enum WeirdDetector {
     TcpHandshakeNotCompleted,
     DnsFailures,
     TcpReliabilityHints,
+    HighLatencyFlows,
 }
 
 fn row_has_tcp_flag(row: &PacketRow, flag: u16) -> bool {
@@ -164,6 +165,42 @@ pub fn build_weird_summary(rows: &[PacketRow], flows: &FlowIndex) -> WeirdSummar
         });
     }
 
+    // Detector: high-latency flows (rough timestamp-based heuristic)
+    {
+        // Conservative: we only flag flows that last "too long" and have enough packets.
+        const MIN_PACKETS: u64 = 10;
+        const MIN_DURATION_MS: i64 = 1500;
+
+        let mut flow_indices: Vec<usize> = Vec::new();
+
+        for (i, fl) in flows.flows.iter().enumerate() {
+            if fl.total_packets < MIN_PACKETS {
+                continue;
+            }
+
+            let mut first_ts: Option<chrono::DateTime<chrono::Utc>> = None;
+            let mut last_ts: Option<chrono::DateTime<chrono::Utc>> = None;
+
+            for pi in fl.packet_indices.iter().copied() {
+                let Some(r) = rows.get(pi) else { continue };
+                first_ts = Some(first_ts.map(|t| t.min(r.ts)).unwrap_or(r.ts));
+                last_ts = Some(last_ts.map(|t| t.max(r.ts)).unwrap_or(r.ts));
+            }
+
+            let (Some(a), Some(b)) = (first_ts, last_ts) else { continue };
+            let dur_ms = (b - a).num_milliseconds();
+            if dur_ms >= MIN_DURATION_MS {
+                flow_indices.push(i);
+            }
+        }
+
+        out.push(WeirdItem {
+            title: "High-latency flows (rough)".to_string(),
+            why: "If a flow takes a long time and has lots of packets, it can indicate latency, congestion, or retries. This is a rough heuristic and depends on correct timestamps.".to_string(),
+            flow_indices,
+        });
+    }
+
     // Sort: most interesting first.
     out.sort_by_key(|it| std::cmp::Reverse(it.flow_indices.len()));
 
@@ -217,6 +254,56 @@ mod tests {
             .items
             .iter()
             .find(|it| it.title.contains("DNS failures"))
+            .unwrap();
+        assert_eq!(item.flow_indices.len(), 1);
+    }
+
+    #[test]
+    fn high_latency_detector_flags_long_flows() {
+        use chrono::{TimeZone, Utc};
+
+        let mk = |idx: usize, ms: i64| PacketRow {
+            index: idx,
+            ts: Utc.timestamp_millis_opt(ms).unwrap(),
+            len: 60,
+            src: Some("10.0.0.2".parse().unwrap()),
+            dst: Some("93.184.216.34".parse().unwrap()),
+            proto: Some(L4Proto::Tcp),
+            src_port: Some(55555),
+            dst_port: Some(443),
+            summary: String::new(),
+            flow: Some(crate::pcap::FlowKey {
+                src: "10.0.0.2".parse().unwrap(),
+                dst: "93.184.216.34".parse().unwrap(),
+                src_port: 55555,
+                dst_port: 443,
+                proto: L4Proto::Tcp,
+            }),
+            flow_dir: Some(crate::pcap::FlowDir::AtoB),
+            tcp_seq: None,
+            tcp_ack: None,
+            tcp_flags: None,
+            payload: Vec::new(),
+            tcp_retransmission: false,
+            tcp_out_of_order: false,
+            dns_qname: None,
+            dns_rcode: None,
+            http_host: None,
+            tls_sni: None,
+        };
+
+        // 10 packets spanning 2000ms => should be flagged.
+        let mut rows: Vec<PacketRow> = Vec::new();
+        for i in 0..10 {
+            rows.push(mk(i, i as i64 * 200));
+        }
+        let flows = FlowIndex::build(&rows);
+        let w = build_weird_summary(&rows, &flows);
+
+        let item = w
+            .items
+            .iter()
+            .find(|it| it.title.contains("High-latency"))
             .unwrap();
         assert_eq!(item.flow_indices.len(), 1);
     }
