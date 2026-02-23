@@ -33,6 +33,7 @@ This is the concrete work list to get to a “PCAPs for humans” launch.
 - Domains: optional sort by bytes (press `s` in Domains view)
 - Domains: optional sort by DNS failures (press `s` to cycle sort)
 - Glossary: press `g` to open definitions (TCP flags, DNS failures, TCP/UDP/QUIC)
+- Correctness: PCAPNG timestamps parsed using interface `if_tsresol` / `if_tsoffset` (fixes time-based views)
 
 ---
 
@@ -73,7 +74,6 @@ This is the concrete work list to get to a “PCAPs for humans” launch.
 ---
 
 ## Correctness / platform blockers
-- **PCAPNG timestamps**: ensure we parse timestamps correctly (needed for sparkline, latency, and time-based weird detectors).
 
 ---
 

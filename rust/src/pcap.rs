@@ -369,11 +369,13 @@ fn read_pcapng(path: &Path) -> Result<Vec<PacketRow>> {
 
     while let Some(block) = reader.next_block() {
         let block = block.with_context(|| "read pcapng block")?;
+        // Detach the block from the reader's internal buffer so we can also consult
+        // `reader.interfaces()` (pcap-file blocks are borrowed by default).
+        let block = block.into_owned();
         match block {
             pcap_file::pcapng::blocks::Block::EnhancedPacket(epb) => {
-                // Timestamp units come from interface description. pcap-file normalizes to raw value.
-                // We'll best-effort treat epb.timestamp as microseconds since epoch if present.
-                let ts = DateTime::<Utc>::from_timestamp(0, 0).unwrap();
+                let iface = reader.interfaces().get(epb.interface_id as usize);
+                let ts = ts_from_pcapng_epb(&epb, iface);
                 out.push(decode_packet(i, ts, &epb.data));
                 i += 1;
             }
@@ -382,6 +384,56 @@ fn read_pcapng(path: &Path) -> Result<Vec<PacketRow>> {
     }
 
     Ok(out)
+}
+
+fn ts_from_pcapng_epb(
+    epb: &pcap_file::pcapng::blocks::enhanced_packet::EnhancedPacketBlock,
+    iface: Option<&pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock>,
+) -> DateTime<Utc> {
+    use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionOption as Opt;
+
+    // pcap-file currently stores the EPB timestamp as raw ticks stuffed into a Duration (nanos).
+    // The tick resolution comes from the interface's if_tsresol option.
+    let ticks: u128 = epb.timestamp.as_nanos();
+
+    // Default per pcapng spec: microsecond resolution (10^-6 seconds).
+    let mut denom: u128 = 1_000_000;
+    let mut ts_offset_secs: u128 = 0;
+
+    if let Some(iface) = iface {
+        for opt in &iface.options {
+            match opt {
+                Opt::IfTsResol(v) => {
+                    if v & 0x80 == 0 {
+                        // 10^-v seconds per tick.
+                        denom = 10u128.saturating_pow(*v as u32);
+                    } else {
+                        // 2^-v seconds per tick.
+                        denom = 2u128.saturating_pow((v & 0x7f) as u32);
+                    }
+                }
+                Opt::IfTsOffset(off) => {
+                    ts_offset_secs = *off as u128;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // Convert ticks → nanoseconds since epoch.
+    let nanos: u128 = ticks
+        .saturating_mul(1_000_000_000)
+        .checked_div(denom)
+        .unwrap_or(0)
+        .saturating_add(ts_offset_secs.saturating_mul(1_000_000_000));
+
+    let secs: i64 = (nanos / 1_000_000_000)
+        .try_into()
+        .unwrap_or(0);
+    let sub_nanos: u32 = (nanos % 1_000_000_000) as u32;
+
+    DateTime::<Utc>::from_timestamp(secs, sub_nanos)
+        .unwrap_or_else(|| DateTime::<Utc>::from_timestamp(0, 0).unwrap())
 }
 
 /// Utility: check if an IP is within any provided CIDR blocks.
@@ -407,5 +459,48 @@ mod tests {
         assert_eq!(tcp_flags_to_string(0x10), "ACK");
         assert_eq!(tcp_flags_to_string(0x12), "SYN,ACK");
         assert_eq!(tcp_flags_to_string(0x11), "FIN,ACK");
+    }
+
+    #[test]
+    fn pcapng_timestamps_respect_if_tsresol_microseconds() {
+        use std::borrow::Cow;
+        use std::time::Duration;
+
+        use pcap_file::pcapng::blocks::enhanced_packet::EnhancedPacketBlock;
+        use pcap_file::pcapng::blocks::interface_description::{
+            InterfaceDescriptionBlock, InterfaceDescriptionOption,
+        };
+        use pcap_file::pcapng::PcapNgWriter;
+        use pcap_file::DataLink;
+
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().with_extension("pcapng");
+
+        {
+            let f = std::fs::File::create(&path).unwrap();
+            let mut w = PcapNgWriter::new(f).unwrap();
+
+            let iface = InterfaceDescriptionBlock {
+                linktype: DataLink::ETHERNET,
+                snaplen: 0xFFFF,
+                options: vec![InterfaceDescriptionOption::IfTsResol(6)], // 10^-6
+            };
+            w.write_pcapng_block(iface).unwrap();
+
+            // 1_500_000 ticks @ 10^-6s == 1.5 seconds since epoch.
+            let pkt = EnhancedPacketBlock {
+                interface_id: 0,
+                timestamp: Duration::from_nanos(1_500_000),
+                original_len: 0,
+                data: Cow::Borrowed(&[]),
+                options: vec![],
+            };
+            w.write_pcapng_block(pkt).unwrap();
+        }
+
+        let rows = read_pcap(&path).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].ts.timestamp(), 1);
+        assert_eq!(rows[0].ts.timestamp_subsec_nanos(), 500_000_000);
     }
 }
