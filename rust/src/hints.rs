@@ -7,6 +7,9 @@ pub fn populate_hints(row: &mut PacketRow) {
     if row.dns_qname.is_none() {
         row.dns_qname = parse_dns_qname(&row.payload);
     }
+    if row.dns_rcode.is_none() {
+        row.dns_rcode = parse_dns_rcode(&row.payload);
+    }
     if row.http_host.is_none() {
         row.http_host = parse_http_host(&row.payload);
     }
@@ -66,6 +69,19 @@ fn parse_dns_qname(payload: &[u8]) -> Option<String> {
     } else {
         Some(name)
     }
+}
+
+fn parse_dns_rcode(payload: &[u8]) -> Option<u16> {
+    // DNS header flags: QR is bit15; RCODE is low 4 bits.
+    if payload.len() < 4 {
+        return None;
+    }
+    let flags = u16::from_be_bytes([payload[2], payload[3]]);
+    let is_response = (flags & 0x8000) != 0;
+    if !is_response {
+        return None;
+    }
+    Some(flags & 0x000f)
 }
 
 fn read_dns_name(buf: &[u8], mut off: usize, depth: usize) -> Option<(String, usize)> {
@@ -233,6 +249,7 @@ fn parse_tls_sni(payload: &[u8]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pcap::PacketRow;
 
     #[test]
     fn http_host_is_extracted() {
@@ -243,5 +260,52 @@ mod tests {
     #[test]
     fn dns_qname_empty_when_not_dns() {
         assert_eq!(parse_dns_qname(b"not dns"), None);
+    }
+
+    #[test]
+    fn dns_rcode_parses_nxdomain() {
+        // Minimal DNS response with rcode=3 (NXDOMAIN) and qdcount=1.
+        // flags = 0x8183: response + recursion available + NXDOMAIN
+        let mut p: Vec<u8> = vec![
+            0x00, 0x01, // id
+            0x81, 0x83, // flags
+            0x00, 0x01, // qdcount
+            0x00, 0x00, // ancount
+            0x00, 0x00, // nscount
+            0x00, 0x00, // arcount
+            // qname: a.com
+            0x01, b'a', 0x03, b'c', b'o', b'm', 0x00,
+            0x00, 0x01, // qtype A
+            0x00, 0x01, // qclass IN
+        ];
+
+        let mut row = PacketRow {
+            index: 0,
+            ts: chrono::Utc::now(),
+            len: p.len(),
+            src: None,
+            dst: None,
+            proto: None,
+            src_port: None,
+            dst_port: None,
+            summary: String::new(),
+            flow: None,
+            flow_dir: None,
+            tcp_seq: None,
+            tcp_ack: None,
+            tcp_flags: None,
+            payload: p.clone(),
+            dns_qname: None,
+            dns_rcode: None,
+            http_host: None,
+            tls_sni: None,
+        };
+
+        populate_hints(&mut row);
+        assert_eq!(row.dns_qname.as_deref(), Some("a.com"));
+        assert_eq!(row.dns_rcode, Some(3));
+
+        // sanity: direct parser agrees
+        assert_eq!(parse_dns_rcode(&p), Some(3));
     }
 }

@@ -77,6 +77,7 @@ pub struct PacketRow {
 
     // Optional protocol hints extracted from payload (best-effort).
     pub dns_qname: Option<String>,
+    pub dns_rcode: Option<u16>,
     pub http_host: Option<String>,
     pub tls_sni: Option<String>,
 }
@@ -105,6 +106,7 @@ fn decode_packet(index: usize, ts: DateTime<Utc>, data: &[u8]) -> PacketRow {
         tcp_flags: None,
         payload: Vec::new(),
         dns_qname: None,
+        dns_rcode: None,
         http_host: None,
         tls_sni: None,
     };

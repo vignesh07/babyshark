@@ -274,6 +274,16 @@ pub fn parse_tshark_fields_line(line: &str) -> Option<PacketRow> {
         tcp_flags,
         payload: Vec::new(),
         dns_qname: dns_qname.map(|s| s.to_string()),
+        dns_rcode: parts
+            .get(13)
+            .and_then(|s| {
+                let s = s.trim();
+                if s.is_empty() {
+                    None
+                } else {
+                    s.parse::<u16>().ok()
+                }
+            }),
         http_host: http_host.map(|s| s.to_string()),
         tls_sni: tls_sni.map(|s| s.to_string()),
     };
@@ -529,6 +539,7 @@ Copyright ...
         let line = "1700000001.000	74	10.0.0.2	1.1.1.1			55555	443			TLS	0x0018	example.com	0			www.example.org	example.com";
         let row = parse_tshark_fields_line(line).unwrap();
         assert_eq!(row.dns_qname.as_deref(), Some("example.com"));
+        assert_eq!(row.dns_rcode, Some(0));
         assert_eq!(row.tls_sni.as_deref(), Some("www.example.org"));
         assert_eq!(row.http_host.as_deref(), Some("example.com"));
     }

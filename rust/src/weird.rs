@@ -23,6 +23,7 @@ pub struct WeirdSummary {
 pub enum WeirdDetector {
     TcpResets,
     TcpHandshakeNotCompleted,
+    DnsFailures,
 }
 
 fn row_has_tcp_flag(row: &PacketRow, flag: u16) -> bool {
@@ -101,8 +102,90 @@ pub fn build_weird_summary(rows: &[PacketRow], flows: &FlowIndex) -> WeirdSummar
         });
     }
 
+    // Detector: DNS failures (NXDOMAIN/SERVFAIL)
+    {
+        let mut flow_indices: Vec<usize> = Vec::new();
+
+        for (i, fl) in flows.flows.iter().enumerate() {
+            // DNS is usually UDP, but can be TCP. Don’t restrict by proto.
+            let mut failed = false;
+
+            for pi in fl.packet_indices.iter().copied() {
+                let Some(r) = rows.get(pi) else { continue };
+                let Some(rcode) = r.dns_rcode else { continue };
+
+                // 0=NOERROR. 2=SERVFAIL. 3=NXDOMAIN.
+                if rcode == 2 || rcode == 3 {
+                    failed = true;
+                    break;
+                }
+            }
+
+            if failed {
+                flow_indices.push(i);
+            }
+        }
+
+        out.push(WeirdItem {
+            title: "DNS failures (NXDOMAIN/SERVFAIL)".to_string(),
+            why: "NXDOMAIN means the name doesn’t exist. SERVFAIL means the resolver had an internal error. If lots of flows show DNS failures, apps may look ‘offline’ even though the network is fine.".to_string(),
+            flow_indices,
+        });
+    }
+
     // Sort: most interesting first.
     out.sort_by_key(|it| std::cmp::Reverse(it.flow_indices.len()));
 
     WeirdSummary { items: out }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::flow::FlowIndex;
+    use crate::pcap::{FlowDir, FlowKey};
+
+    #[test]
+    fn dns_failures_detector_finds_flows() {
+        let mk = |idx: usize, rcode: Option<u16>, sp: u16, dp: u16| PacketRow {
+            index: idx,
+            ts: chrono::Utc::now(),
+            len: 60,
+            src: Some("10.0.0.2".parse().unwrap()),
+            dst: Some("1.1.1.1".parse().unwrap()),
+            proto: Some(L4Proto::Udp),
+            src_port: Some(sp),
+            dst_port: Some(dp),
+            summary: String::new(),
+            flow: Some(FlowKey {
+                src: "10.0.0.2".parse().unwrap(),
+                dst: "1.1.1.1".parse().unwrap(),
+                src_port: sp,
+                dst_port: dp,
+                proto: L4Proto::Udp,
+            }),
+            flow_dir: Some(FlowDir::AtoB),
+            tcp_seq: None,
+            tcp_ack: None,
+            tcp_flags: None,
+            payload: Vec::new(),
+            dns_qname: Some("example.com".to_string()),
+            dns_rcode: rcode,
+            http_host: None,
+            tls_sni: None,
+        };
+
+        // Flow 1: NXDOMAIN
+        let rows = vec![mk(0, Some(3), 55555, 53), mk(1, None, 60000, 53)];
+        let flows = FlowIndex::build(&rows);
+        let w = build_weird_summary(&rows, &flows);
+
+        let item = w
+            .items
+            .iter()
+            .find(|it| it.title.contains("DNS failures"))
+            .unwrap();
+        assert_eq!(item.flow_indices.len(), 1);
+    }
+}
+

@@ -24,6 +24,7 @@ This is the concrete work list to get to a “PCAPs for humans” launch.
 - Overview: “top talker (pkts)” shown alongside “top talker (bytes)”
 - Overview: “top flow (pkts)” shown alongside bytes-based top flow
 - Live: show capture duration + approx pps + dropped packet count
+- Weird: DNS failures detector (NXDOMAIN/SERVFAIL) (offline + live)
 
 ---
 
@@ -45,7 +46,7 @@ This is the concrete work list to get to a “PCAPs for humans” launch.
 4. **(shipped)** Live mode: show capture duration + approx pps + dropped packets if available.
 
 ### C) Weird-mode completeness
-1. DNS failures detector (NXDOMAIN/SERVFAIL) (offline + live fields).
+1. **(shipped)** DNS failures detector (NXDOMAIN/SERVFAIL) (offline + live fields).
 2. Out-of-order / retransmit hints (prefer tshark fields if available).
 3. High-latency flow heuristic (requires correct timestamps).
 4. “Next click” suggestions per detector (structured, consistent).

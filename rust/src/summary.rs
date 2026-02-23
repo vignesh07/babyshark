@@ -251,6 +251,7 @@ mod tests {
             tcp_flags: None,
             payload: Vec::new(),
             dns_qname: None,
+            dns_rcode: None,
             http_host: None,
             tls_sni: None,
         };
@@ -288,6 +289,7 @@ mod tests {
             tcp_flags: None,
             payload: Vec::new(),
             dns_qname: None,
+            dns_rcode: None,
             http_host: None,
             tls_sni: None,
         };
