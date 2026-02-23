@@ -58,6 +58,7 @@ fn c_muted() -> Color {
 pub enum View {
     Overview,
     Flows,
+    Weird,
     Packets,
     Stream,
 }
@@ -97,6 +98,11 @@ pub struct App {
     pub selected_row: usize,
     pub visible_flow_indices: Vec<usize>,
 
+    // weird-mode (detector) state
+    pub weird_selected_row: usize,
+    pub weird_flow_subset: Option<Vec<usize>>, // flow indices (into flows.flows)
+    pub weird_active_label: Option<String>,
+
     // filter
     pub filter: FlowFilter,
 
@@ -135,6 +141,9 @@ impl App {
             view: View::Overview,
             selected_row: 0,
             visible_flow_indices: Vec::new(),
+            weird_selected_row: 0,
+            weird_flow_subset: None,
+            weird_active_label: None,
             filter: FlowFilter::default(),
             bookmark_note: String::new(),
             modal: Modal::None,
@@ -149,7 +158,8 @@ impl App {
     }
 
     fn recompute_visible(&mut self) {
-        self.visible_flow_indices = self
+        // Base set: filter text + TCP/UDP toggles.
+        let mut indices: Vec<usize> = self
             .flows
             .flows
             .iter()
@@ -157,9 +167,22 @@ impl App {
             .filter(|(_i, f)| self.filter.matches(f))
             .map(|(i, _)| i)
             .collect();
+
+        // Optional additional subset restriction (used by Weird-mode detectors).
+        if let Some(subset) = &self.weird_flow_subset {
+            // `subset` is stored sorted; use binary_search for cheap intersection.
+            indices.retain(|i| subset.binary_search(i).is_ok());
+        }
+
+        self.visible_flow_indices = indices;
+
         if self.selected_row >= self.visible_flow_indices.len() {
             self.selected_row = self.visible_flow_indices.len().saturating_sub(1);
         }
+    }
+
+    fn apply_filter(&mut self) {
+        self.recompute_visible();
     }
 
     fn selected_flow(&self) -> Option<&FlowStats> {
@@ -197,8 +220,10 @@ impl App {
     fn back(&mut self) {
         self.view = match self.view {
             View::Flows => View::Flows,
+            View::Weird => View::Flows,
             View::Packets => View::Flows,
             View::Stream => View::Packets,
+            View::Overview => View::Overview,
         };
         self.stream_scroll = 0;
     }
@@ -846,11 +871,12 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
             let title = match app.view {
                 View::Overview => "Overview",
                 View::Flows => "Flows",
+                View::Weird => "Weird stuff",
                 View::Packets => "Packets",
                 View::Stream => "Follow Stream",
             };
 
-            let filter_badge = format!(
+            let mut filter_badge = format!(
                 "tcp:{} udp:{} q={}",
                 if app.filter.show_tcp { "on" } else { "off" },
                 if app.filter.show_udp { "on" } else { "off" },
@@ -860,6 +886,9 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     app.filter.query.trim()
                 }
             );
+            if let Some(lbl) = &app.weird_active_label {
+                filter_badge.push_str(&format!("  weird={lbl}"));
+            }
 
             let header = Paragraph::new(Line::from(vec![
                 Span::styled(
@@ -935,6 +964,93 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         )
                         .wrap(ratatui::widgets::Wrap { trim: true });
                     f.render_widget(p, body_chunks[0]);
+                }
+
+                View::Weird => {
+                    use crate::weird::build_weird_summary;
+
+                    let weird = build_weird_summary(&app.rows, &app.flows);
+
+                    let items: Vec<ListItem> = weird
+                        .items
+                        .iter()
+                        .enumerate()
+                        .map(|(i, it)| {
+                            let line = Line::from(vec![
+                                Span::styled(
+                                    format!("{:>2} ", i + 1),
+                                    Style::default().fg(c_muted()),
+                                ),
+                                Span::styled(
+                                    format!("{:<22}", it.title),
+                                    Style::default().fg(c_text()).add_modifier(Modifier::BOLD),
+                                ),
+                                Span::raw(UI_SPACER),
+                                Span::styled(
+                                    format!("flows={}", it.flow_indices.len()),
+                                    Style::default().fg(if it.flow_indices.is_empty() {
+                                        Color::Rgb(160, 170, 190)
+                                    } else {
+                                        Color::Rgb(255, 215, 0)
+                                    }),
+                                ),
+                            ]);
+                            ListItem::new(line)
+                        })
+                        .collect();
+
+                    let mut weird_state = ListState::default();
+                    if !weird.items.is_empty() {
+                        weird_state.select(Some(app.weird_selected_row.min(weird.items.len() - 1)));
+                    }
+
+                    let list = List::new(items)
+                        .block(
+                            Block::default()
+                                .borders(Borders::ALL)
+                                .title("Weird stuff  (Enter show flows, c clear, Esc back)")
+                                .style(Style::default().bg(c_panel())),
+                        )
+                        .highlight_style(
+                            Style::default()
+                                .bg(c_highlight_bg())
+                                .fg(c_text())
+                                .add_modifier(Modifier::BOLD),
+                        )
+                        .highlight_symbol("❯ ");
+
+                    f.render_stateful_widget(list, body_chunks[0], &mut weird_state);
+
+                    // Right panel: explanation
+                    let selected = weird.items.get(app.weird_selected_row);
+                    let (title, why) = if let Some(it) = selected {
+                        (it.title.as_str(), it.why.as_str())
+                    } else {
+                        ("Weird stuff", "Pick a detector on the left.")
+                    };
+
+                    let expl = Paragraph::new(vec![
+                        Line::from(Span::styled(
+                            title,
+                            Style::default().fg(c_accent()).add_modifier(Modifier::BOLD),
+                        )),
+                        Line::from(Span::raw("")),
+                        Line::from(Span::styled(why, Style::default().fg(c_text()))),
+                        Line::from(Span::raw("")),
+                        Line::from(Span::styled(
+                            "Tip: Enter applies a flow filter so you can drill into packets/stream.",
+                            Style::default().fg(c_muted()),
+                        )),
+                    ])
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title("Why it matters")
+                            .style(Style::default().bg(c_panel())),
+                    )
+                    .wrap(Wrap { trim: true });
+
+                    f.render_widget(expl, body_chunks[1]);
                 }
 
                 View::Flows => {
@@ -1131,36 +1247,45 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                 }
             }
 
-            // Details panel (always)
-            let detail = if let Some(fl) = app.selected_flow() {
-                let a = format!("A→B: {} pkts / {} bytes", fl.a_to_b.packets, fl.a_to_b.bytes);
-                let b = format!("B→A: {} pkts / {} bytes", fl.b_to_a.packets, fl.b_to_a.bytes);
-                let bookmarks = app.casefile.bookmarks.len();
-                vec![
-                    Line::from(vec![Span::styled(
-                        fl.label(),
-                        Style::default().fg(Color::Rgb(255, 215, 0)).add_modifier(Modifier::BOLD),
-                    )]),
-                    Line::from(Span::raw("")),
-                    Line::from(Span::styled(a, Style::default().fg(c_muted()))),
-                    Line::from(Span::styled(b, Style::default().fg(c_muted()))),
-                    Line::from(Span::raw("")),
-                    Line::from(vec![
-                        Span::styled("bookmarks: ", Style::default().fg(c_muted())),
-                        Span::raw(format!("{bookmarks}")),
-                    ]),
-                ]
-            } else {
-                vec![Line::from(Span::styled("No flows decoded.", Style::default().fg(c_muted())))]
-            };
+            // Details panel (for non-Weird views)
+            if app.view != View::Weird {
+                let detail = if let Some(fl) = app.selected_flow() {
+                    let a =
+                        format!("A→B: {} pkts / {} bytes", fl.a_to_b.packets, fl.a_to_b.bytes);
+                    let b =
+                        format!("B→A: {} pkts / {} bytes", fl.b_to_a.packets, fl.b_to_a.bytes);
+                    let bookmarks = app.casefile.bookmarks.len();
+                    vec![
+                        Line::from(vec![Span::styled(
+                            fl.label(),
+                            Style::default()
+                                .fg(Color::Rgb(255, 215, 0))
+                                .add_modifier(Modifier::BOLD),
+                        )]),
+                        Line::from(Span::raw("")),
+                        Line::from(Span::styled(a, Style::default().fg(c_muted()))),
+                        Line::from(Span::styled(b, Style::default().fg(c_muted()))),
+                        Line::from(Span::raw("")),
+                        Line::from(vec![
+                            Span::styled("bookmarks: ", Style::default().fg(c_muted())),
+                            Span::raw(format!("{bookmarks}")),
+                        ]),
+                    ]
+                } else {
+                    vec![Line::from(Span::styled(
+                        "No flows decoded.",
+                        Style::default().fg(c_muted()),
+                    ))]
+                };
 
-            let detail = Paragraph::new(detail).block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("Details")
-                    .style(Style::default().bg(c_panel())),
-            );
-            f.render_widget(detail, body_chunks[1]);
+                let detail = Paragraph::new(detail).block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Details")
+                        .style(Style::default().bg(c_panel())),
+                );
+                f.render_widget(detail, body_chunks[1]);
+            }
 
             let footer_line = match app.modal {
                 Modal::Filter => Line::from(vec![
@@ -1179,6 +1304,26 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     Span::styled("type query, Enter apply, Esc cancel, Ctrl+u clear", Style::default().fg(c_muted())),
                 ]),
                 Modal::None => match app.view {
+                    View::Overview => Line::from(vec![
+                        Span::styled("F", Style::default().fg(Color::Green)),
+                        Span::raw(" flows  "),
+                        Span::styled("W", Style::default().fg(Color::Green)),
+                        Span::raw(" weird  "),
+                        Span::styled("q", Style::default().fg(Color::Green)),
+                        Span::raw(" quit"),
+                    ]),
+                    View::Weird => Line::from(vec![
+                        Span::styled("↑/↓", Style::default().fg(Color::Green)),
+                        Span::raw(" move  "),
+                        Span::styled("Enter", Style::default().fg(Color::Green)),
+                        Span::raw(" show flows  "),
+                        Span::styled("c", Style::default().fg(Color::Green)),
+                        Span::raw(" clear  "),
+                        Span::styled("Esc", Style::default().fg(Color::Green)),
+                        Span::raw(" back  "),
+                        Span::styled("q", Style::default().fg(Color::Green)),
+                        Span::raw(" quit"),
+                    ]),
                     View::Flows => Line::from(vec![
                         Span::styled("↑/↓", Style::default().fg(Color::Green)),
                         Span::raw(" move  "),
@@ -1192,6 +1337,8 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         Span::raw(" bookmark  "),
                         Span::styled("E", Style::default().fg(Color::Green)),
                         Span::raw(" export  "),
+                        Span::styled("c", Style::default().fg(Color::Green)),
+                        Span::raw(" clear weird  "),
                         Span::styled("q", Style::default().fg(Color::Green)),
                         Span::raw(" quit"),
                     ]),
@@ -1275,7 +1422,8 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
 
                 match key.code {
                     KeyCode::Char('o') => { app.view = View::Overview; },
-                    KeyCode::Char('f') => { app.view = View::Flows; },
+                    KeyCode::Char('F') => { app.view = View::Flows; },
+                    KeyCode::Char('W') => { app.view = View::Weird; },
                     KeyCode::Char('q') => return Ok(()),
                     KeyCode::Char('/') => {
                         if app.view == View::Flows {
@@ -1334,14 +1482,36 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             let _ = app.export_report();
                         }
                     }
+                    KeyCode::Char('c') => {
+                        if matches!(app.view, View::Flows | View::Weird) {
+                            app.weird_flow_subset = None;
+                            app.weird_active_label = None;
+                            app.apply_filter();
+                        }
+                    }
                     KeyCode::Esc => {
-                        if app.view != View::Flows {
+                        if app.view == View::Weird {
+                            app.view = View::Overview;
+                        } else if app.view != View::Flows {
                             app.back();
                         }
                     }
                     KeyCode::Enter => {
                         if app.view == View::Flows {
                             app.open_packets();
+                        } else if app.view == View::Weird {
+                            let weird = crate::weird::build_weird_summary(&app.rows, &app.flows);
+                            if let Some(it) = weird.items.get(app.weird_selected_row) {
+                                let mut subset = it.flow_indices.clone();
+                                subset.sort_unstable();
+                                subset.dedup();
+                                app.weird_flow_subset = Some(subset);
+                                app.weird_active_label = Some(it.title.clone());
+                                app.view = View::Flows;
+                                app.selected_row = 0;
+                                app.apply_filter();
+                                flow_state.select(Some(app.selected_row));
+                            }
                         }
                     }
                     KeyCode::Char('f') => {
@@ -1364,6 +1534,9 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             app.move_down();
                             flow_state.select(Some(app.selected_row));
                         }
+                        View::Weird => {
+                            app.weird_selected_row = app.weird_selected_row.saturating_add(1);
+                        }
                         View::Stream => {
                             app.scroll_down();
                         }
@@ -1373,6 +1546,9 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         View::Flows => {
                             app.move_up();
                             flow_state.select(Some(app.selected_row));
+                        }
+                        View::Weird => {
+                            app.weird_selected_row = app.weird_selected_row.saturating_sub(1);
                         }
                         View::Stream => {
                             app.scroll_up();

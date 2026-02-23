@@ -382,6 +382,7 @@ fn spawn_tshark_child_fields(
 pub fn spawn_live_capture_tshark_fields(
     iface: String,
     bpf: Option<String>,
+    dfilter: Option<String>,
 ) -> Result<Receiver<PacketRow>> {
     let _ver = tshark_version().context("tshark not available (required for --live)")?;
 
@@ -392,7 +393,7 @@ pub fn spawn_live_capture_tshark_fields(
             &iface,
             bpf.as_deref(),
             dfilter.as_deref(),
-            write_pcap.as_deref(),
+            None,
         ) {
             Ok(c) => c,
             Err(_) => return,
@@ -485,7 +486,8 @@ Copyright ...
 
     #[test]
     fn parse_tshark_fields_line_udp_ipv6() {
-        let line = "1700000000.000	42			2001:db8::1	2001:db8::2					53	5353	UDP	";
+        // columns: epoch, len, ip.src, ip.dst, ipv6.src, ipv6.dst, tcp sp/dp, udp sp/dp, proto col, flags
+        let line = "1700000000.000	42			2001:db8::1	2001:db8::2			53	5353	UDP	";
         let row = parse_tshark_fields_line(line).unwrap();
         assert_eq!(row.proto, Some(L4Proto::Udp));
         assert_eq!(row.src_port, Some(53));
