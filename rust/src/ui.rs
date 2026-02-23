@@ -919,6 +919,12 @@ fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
     let top_flow = ov
         .top_flows
         .first()
+        .map(|f| format!("{} ({:.1}KB)", f.label(), (f.total_bytes as f64) / 1024.0))
+        .unwrap_or_else(|| "—".to_string());
+
+    let top_flow_by_packets = ov
+        .top_flows_by_packets
+        .first()
         .map(|f| format!("{} ({} pkts)", f.label(), f.total_packets))
         .unwrap_or_else(|| "—".to_string());
 
@@ -960,7 +966,15 @@ fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
     }
     rows.push(OverviewRow {
         label: Line::from(Span::styled(
-            format!("Top flow: {top_flow}"),
+            format!("Top flow (bytes): {top_flow}"),
+            Style::default().fg(c_muted()),
+        )),
+        action: None,
+    });
+
+    rows.push(OverviewRow {
+        label: Line::from(Span::styled(
+            format!("Top flow (pkts): {top_flow_by_packets}"),
             Style::default().fg(c_muted()),
         )),
         action: None,

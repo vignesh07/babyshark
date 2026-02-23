@@ -34,7 +34,10 @@ pub struct OverviewSummary {
     /// Sorted by total packets (desc).
     pub top_hosts_by_packets: Vec<(IpAddr, HostCounts)>,
 
+    /// Sorted by total bytes (desc).
     pub top_flows: Vec<FlowStats>,
+    /// Sorted by total packets (desc).
+    pub top_flows_by_packets: Vec<FlowStats>,
 }
 
 fn bump(m: &mut HashMap<u64, HostCounts>, k: u64, bytes: u64) {
@@ -147,7 +150,17 @@ pub fn build_overview(rows: &[PacketRow], flows: &FlowIndex, limit: usize) -> Ov
     out.top_hosts_by_packets = top_hosts;
     out.top_hosts_by_packets.truncate(limit);
 
+    // FlowIndex is already sorted by total_bytes desc.
     out.top_flows = flows.flows.iter().take(limit).cloned().collect();
+
+    let mut by_packets: Vec<FlowStats> = flows.flows.iter().cloned().collect();
+    by_packets.sort_by(|a, b| {
+        b.total_packets
+            .cmp(&a.total_packets)
+            .then_with(|| b.total_bytes.cmp(&a.total_bytes))
+    });
+    by_packets.truncate(limit);
+    out.top_flows_by_packets = by_packets;
 
     out
 }
@@ -212,6 +225,9 @@ mod tests {
 
         // New: top talkers by packets should be present (even if order is trivial here).
         assert!(!ov.top_hosts_by_packets.is_empty());
+
+        // New: top flows by packets should be present.
+        assert!(!ov.top_flows_by_packets.is_empty());
     }
 
     #[test]
@@ -243,5 +259,51 @@ mod tests {
         let rows = vec![mk(0), mk(0), mk(1), mk(1), mk(2), mk(3)];
         let b = build_pps_buckets(&rows);
         assert_eq!(b, vec![2, 2, 1, 1]);
+    }
+
+    #[test]
+    fn top_flows_by_packets_prefers_packet_count() {
+        use chrono::{TimeZone, Utc};
+
+        let mk = |idx: usize, sec: i64, len: usize, proto: L4Proto, sp: u16, dp: u16| PacketRow {
+            index: idx,
+            ts: Utc.timestamp_opt(sec, 0).unwrap(),
+            len,
+            src: Some("1.1.1.1".parse().unwrap()),
+            dst: Some("2.2.2.2".parse().unwrap()),
+            proto: Some(proto),
+            src_port: Some(sp),
+            dst_port: Some(dp),
+            summary: String::new(),
+            flow: Some(crate::pcap::FlowKey {
+                src: "1.1.1.1".parse().unwrap(),
+                dst: "2.2.2.2".parse().unwrap(),
+                src_port: sp,
+                dst_port: dp,
+                proto,
+            }),
+            flow_dir: Some(crate::pcap::FlowDir::AtoB),
+            tcp_seq: None,
+            tcp_ack: None,
+            tcp_flags: None,
+            payload: Vec::new(),
+            dns_qname: None,
+            http_host: None,
+            tls_sni: None,
+        };
+
+        // Flow A: 5 small packets.
+        let mut rows: Vec<PacketRow> = (0..5)
+            .map(|i| mk(i, 0, 60, L4Proto::Tcp, 1111, 80))
+            .collect();
+        // Flow B: 2 large packets.
+        rows.push(mk(5, 0, 1500, L4Proto::Tcp, 2222, 443));
+        rows.push(mk(6, 0, 1500, L4Proto::Tcp, 2222, 443));
+
+        let flows = FlowIndex::build(&rows);
+        let ov = build_overview(&rows, &flows, 10);
+
+        assert_eq!(ov.top_flows_by_packets[0].total_packets, 5);
+        assert_eq!(ov.top_flows_by_packets[0].key.src_port, 1111);
     }
 }

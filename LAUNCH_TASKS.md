@@ -22,6 +22,7 @@ This is the concrete work list to get to a “PCAPs for humans” launch.
 - Live mode: tshark fields populate `PacketRow` hostname hints (`dns.qry.name`, TLS SNI, HTTP Host)
 - Overview: packets/sec sparkline (coarse buckets)
 - Overview: “top talker (pkts)” shown alongside “top talker (bytes)”
+- Overview: “top flow (pkts)” shown alongside bytes-based top flow
 
 ---
 
@@ -39,7 +40,7 @@ This is the concrete work list to get to a “PCAPs for humans” launch.
 ### B) Overview completeness
 1. **(shipped)** Add packets/sec sparkline (simple, coarse bucketed).
 2. **(shipped)** Add “Top talkers by packets” (not just bytes).
-3. Add “Top flows by packets” (not just bytes).
+3. **(shipped)** Add “Top flows by packets” (not just bytes).
 4. Live mode: show capture duration + approx pps + dropped packets if available.
 
 ### C) Weird-mode completeness
