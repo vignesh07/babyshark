@@ -1468,7 +1468,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         .block(
                             Block::default()
                                 .borders(Borders::ALL)
-                                .title("Domains (DNS only)  (Enter show flows, s sort (conn/bytes/fail), c clear, Esc back)")
+                                .title("Domains  (Enter show flows, s sort (conn/bytes/fail), c clear, Esc back)")
                                 .style(Style::default().bg(c_panel())),
                         )
                         .highlight_style(
