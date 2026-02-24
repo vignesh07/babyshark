@@ -108,6 +108,13 @@ fn classify_flow(rows: &[PacketRow], fl: &FlowStats) -> (String, Vec<String>, Ve
         next.push("Open Domains (D) to pivot by hostname".to_string());
     }
 
+    // Set expectations about encrypted payloads.
+    if service.contains("TLS") {
+        next.push(
+            "Note: TLS payload is encrypted; without keys you can’t inspect the contents — but timing, sizes, resets/retries, and host hints still help.".to_string(),
+        );
+    }
+
     if next.is_empty() {
         next.push("From packets: press f to Follow stream (TCP)".to_string());
         next.push("Use / to search in the stream".to_string());

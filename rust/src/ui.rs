@@ -3309,20 +3309,49 @@ fn build_glossary_lines() -> Vec<Line<'static>> {
     )));
     out.push(Line::from(vec![
         Span::styled("• TCP: ", Style::default().fg(c_muted())),
-        Span::styled("Reliable, ordered stream (retransmits on loss).", Style::default().fg(c_text())),
+        Span::styled(
+            "Reliable, ordered stream (retransmits on loss).",
+            Style::default().fg(c_text()),
+        ),
     ]));
     out.push(Line::from(vec![
         Span::styled("• UDP: ", Style::default().fg(c_muted())),
-        Span::styled("Unreliable datagrams (no built-in retransmit).", Style::default().fg(c_text())),
+        Span::styled(
+            "Unreliable datagrams (no built-in retransmit).",
+            Style::default().fg(c_text()),
+        ),
     ]));
     out.push(Line::from(vec![
         Span::styled("• QUIC: ", Style::default().fg(c_muted())),
-        Span::styled("Reliable transport over UDP (used by HTTP/3).", Style::default().fg(c_text())),
+        Span::styled(
+            "Reliable transport over UDP (used by HTTP/3).",
+            Style::default().fg(c_text()),
+        ),
     ]));
 
     out.push(Line::from(Span::raw("")));
     out.push(Line::from(Span::styled(
-        "Esc to close",
+        "Streams",
+        Style::default().fg(c_muted()).add_modifier(Modifier::BOLD),
+    )));
+    out.push(Line::from(vec![
+        Span::styled("• Follow stream: ", Style::default().fg(c_muted())),
+        Span::styled(
+            "Reassembled payload bytes for a TCP flow direction (best-effort).",
+            Style::default().fg(c_text()),
+        ),
+    ]));
+    out.push(Line::from(vec![
+        Span::styled("• TLS note: ", Style::default().fg(c_muted())),
+        Span::styled(
+            "HTTPS payload is encrypted; without keys you typically can’t inspect contents.",
+            Style::default().fg(c_text()),
+        ),
+    ]));
+
+    out.push(Line::from(Span::raw("")));
+    out.push(Line::from(Span::styled(
+        "Esc/Backspace to close",
         Style::default().fg(c_muted()),
     )));
 
