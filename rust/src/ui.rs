@@ -112,6 +112,9 @@ pub struct App {
 
     // onboarding
     pub show_onboarding: bool,
+
+    // learning mode
+    pub learning_mode: bool,
     pub live_pps_window_start: std::time::Instant,
     pub live_pps_window_count: usize,
     pub live_pending_rebuild: usize,
@@ -182,6 +185,7 @@ impl App {
             live_capture_start: std::time::Instant::now(),
             live_dropped_packets: 0,
             show_onboarding: true,
+            learning_mode: false,
             live_pps_window_start: std::time::Instant::now(),
             live_pps_window_count: 0,
             live_pending_rebuild: 0,
@@ -1825,7 +1829,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         .block(
                             Block::default()
                                 .borders(Borders::ALL)
-                                .title("Packets  (↑/↓ move, PgUp/PgDn page, f stream, Esc back)")
+                                .title("Packets  (↑/↓ move, PgUp/PgDn page, f follow stream, ? explain, Esc back)")
                                 .style(Style::default().bg(c_panel())),
                         )
                         .highlight_style(
@@ -1911,7 +1915,8 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     let b =
                         format!("B→A: {} pkts / {} bytes", fl.b_to_a.packets, fl.b_to_a.bytes);
                     let bookmarks = app.casefile.bookmarks.len();
-                    vec![
+
+                    let mut out = vec![
                         Line::from(vec![Span::styled(
                             fl.label(),
                             Style::default()
@@ -1926,7 +1931,25 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             Span::styled("bookmarks: ", Style::default().fg(c_muted())),
                             Span::raw(format!("{bookmarks}")),
                         ]),
-                    ]
+                    ];
+
+                    if app.learning_mode {
+                        out.push(Line::from(Span::raw("")));
+                        out.push(Line::from(Span::styled(
+                            "Learning mode",
+                            Style::default().fg(c_muted()).add_modifier(Modifier::BOLD),
+                        )));
+                        out.push(Line::from(Span::styled(
+                            "A flow groups packets between two endpoints (IP:port ↔ IP:port).",
+                            Style::default().fg(c_muted()),
+                        )));
+                        out.push(Line::from(Span::styled(
+                            "Tip: Enter opens Packets; ? explains; / filters flows.",
+                            Style::default().fg(c_muted()),
+                        )));
+                    }
+
+                    out
                 } else {
                     vec![Line::from(Span::styled(
                         "No flows decoded.",
@@ -2151,6 +2174,10 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     }
                     KeyCode::Char('h') => {
                         app.modal = Modal::Help;
+                        app.show_onboarding = false;
+                    }
+                    KeyCode::Char('L') | KeyCode::Char('l') => {
+                        app.learning_mode = !app.learning_mode;
                         app.show_onboarding = false;
                     }
                     KeyCode::Char('x') => {
@@ -3356,6 +3383,9 @@ fn build_help_lines() -> Vec<Line<'static>> {
             Span::styled("   ", Style::default()),
             Span::styled("g", Style::default().fg(Color::Green)),
             Span::styled(" glossary", Style::default().fg(c_text())),
+            Span::styled("   ", Style::default()),
+            Span::styled("L", Style::default().fg(Color::Green)),
+            Span::styled(" learning", Style::default().fg(c_text())),
         ]),
         Line::from(Span::raw("")),
         Line::from(Span::styled(
