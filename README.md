@@ -361,4 +361,4 @@ When you bookmark/export, babyshark writes next to the PCAP in a hidden director
 
 ## License
 
-TBD (choose MIT/Apache-2.0/etc.)
+MIT © 2026 Vignesh Natarajan
