@@ -2155,7 +2155,12 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             app.open_packets();
                         } else if app.view == View::Weird {
                             let weird = crate::weird::build_weird_summary(&app.rows, &app.flows);
-                            if let Some(it) = weird.items.get(app.weird_selected_row) {
+                            if weird.items.is_empty() {
+                                // nothing
+                            } else {
+                                let sel = app.weird_selected_row.min(weird.items.len() - 1);
+                                app.weird_selected_row = sel;
+                                if let Some(it) = weird.items.get(sel) {
                                 let mut subset = it.flow_indices.clone();
                                 subset.sort_unstable();
                                 subset.dedup();
@@ -2166,6 +2171,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                 app.selected_row = 0;
                                 app.apply_filter();
                                 flow_state.select(Some(app.selected_row));
+                                }
                             }
                         } else if app.view == View::Domains {
                             let dom = crate::domains::build_domains_summary(
@@ -2173,7 +2179,12 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                 &app.flows,
                                 app.domains_sort,
                             );
-                            if let Some(it) = dom.items.get(app.domains_selected_row) {
+                            if dom.items.is_empty() {
+                                // nothing
+                            } else {
+                                let sel = app.domains_selected_row.min(dom.items.len() - 1);
+                                app.domains_selected_row = sel;
+                                if let Some(it) = dom.items.get(sel) {
                                 let mut subset = it.flow_indices.clone();
                                 subset.sort_unstable();
                                 subset.dedup();
@@ -2184,6 +2195,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                 app.selected_row = 0;
                                 app.apply_filter();
                                 flow_state.select(Some(app.selected_row));
+                                }
                             }
                         } else if app.view == View::Overview {
                             // Rebuild the overview rows in the same order as the UI and execute the selected action.
