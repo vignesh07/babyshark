@@ -11,6 +11,20 @@ Babyshark is a PCAP TUI that helps you answer:
 - Offline `.pcap` / `.pcapng` viewing works without Wireshark
 - Live capture requires `tshark` (Wireshark CLI)
 
+
+### Overview 
+![DB99A3F0-4AB7-461C-A40F-496F9C950AFC](https://github.com/user-attachments/assets/8dfb277c-a081-4feb-987e-6fc404e39f7e)
+
+### Domains
+![5E1633E3-0E53-4085-AE98-6656121EAF8B](https://github.com/user-attachments/assets/7f4691cb-b930-46c6-85d8-6facfe9acfcd)
+
+### What's weird?
+![B401B8AA-4EE7-42BE-A53A-DC4F6DFC562A](https://github.com/user-attachments/assets/bf8b8c1d-8c45-47a8-b9ec-17bc29a925d5)
+
+### Expand
+![Screenshot 2026-02-23 at 12 09 07 PM](https://github.com/user-attachments/assets/68cdf767-426b-41b0-85d4-b2e44fe12eac)
+
+
 ---
 
 ## Quickstart
