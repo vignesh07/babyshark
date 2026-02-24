@@ -132,6 +132,7 @@ cargo install --git https://github.com/vignesh07/babyshark --bin babyshark
 ### macOS
 
 ```bash
+# macOS (Homebrew)
 brew install wireshark
 ```
 
@@ -355,7 +356,7 @@ When you bookmark/export, babyshark writes next to the PCAP in a hidden director
 - `--bpf` capture filter pass-through for live mode
 - Even better protocol hints + flow classification
 - Improved TCP reassembly (gap/retransmit markers)
-- Homebrew/Scoop packaging
+- Packaging improvements (TBD)
 
 ---
 
