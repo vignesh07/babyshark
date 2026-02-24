@@ -2,7 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Utc};
 use std::io::{BufRead, BufReader};
 use std::net::IpAddr;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 
@@ -425,6 +425,74 @@ fn spawn_tshark_child_fields(
     cmd.spawn().context("failed to spawn tshark")
 }
 
+fn format_tshark_exit_status(status: ExitStatus) -> String {
+    if status.success() {
+        return "[tshark exited: success]".to_string();
+    }
+    if let Some(code) = status.code() {
+        return format!("[tshark exited: code {code}]");
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(sig) = status.signal() {
+            return format!("[tshark exited: signal {sig}]");
+        }
+    }
+    "[tshark exited: unknown status]".to_string()
+}
+
+fn drain_tshark_stderr(
+    stderr: std::process::ChildStderr,
+    tx_err: mpsc::Sender<String>,
+) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        let reader = BufReader::new(stderr);
+        for line_res in reader.lines() {
+            match line_res {
+                Ok(line) => {
+                    let line = line.trim();
+                    if line.is_empty() {
+                        continue;
+                    }
+                    // Only keep recent errors; UI stores last line.
+                    if tx_err.send(line.to_string()).is_err() {
+                        break;
+                    }
+                }
+                Err(err) => {
+                    let _ = tx_err.send(format!("[tshark stderr read error] {err}"));
+                    break;
+                }
+            }
+        }
+    })
+}
+
+fn forward_tshark_stdout(
+    stdout: std::process::ChildStdout,
+    tx: &mpsc::Sender<PacketRow>,
+    tx_err: &mpsc::Sender<String>,
+) -> bool {
+    let reader = BufReader::new(stdout);
+    for line_res in reader.lines() {
+        let line = match line_res {
+            Ok(line) => line,
+            Err(err) => {
+                let _ = tx_err.send(format!("[tshark stdout read error] {err}"));
+                return false;
+            }
+        };
+        if let Some(row) = parse_tshark_fields_line(&line) {
+            if tx.send(row).is_err() {
+                // UI receiver dropped; caller should stop tshark.
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// Spawn a background `tshark` process and stream parsed packets into a channel.
 pub fn spawn_live_capture_tshark_fields(
     iface: String,
@@ -444,42 +512,42 @@ pub fn spawn_live_capture_tshark_fields(
             None,
         ) {
             Ok(c) => c,
-            Err(_) => return,
+            Err(err) => {
+                let _ = tx_err.send(format!("[tshark spawn failed] {err}"));
+                return;
+            }
         };
 
         let Some(stdout) = child.stdout.take() else {
+            let _ = tx_err.send("[tshark error] stdout pipe unavailable".to_string());
             let _ = child.kill();
+            let _ = child.wait();
             return;
         };
 
         // Drain stderr so tshark can't block on a full stderr pipe.
-        if let Some(stderr) = child.stderr.take() {
-            let tx_err2 = tx_err.clone();
-            thread::spawn(move || {
-                let reader = BufReader::new(stderr);
-                for line in reader.lines().flatten() {
-                    // Only keep recent errors; UI stores last line.
-                    if tx_err2.send(line).is_err() {
-                        break;
-                    }
-                }
-            });
+        let stderr_handle = child
+            .stderr
+            .take()
+            .map(|stderr| drain_tshark_stderr(stderr, tx_err.clone()));
+
+        let ui_gone = forward_tshark_stdout(stdout, &tx, &tx_err);
+        if ui_gone {
+            let _ = child.kill();
         }
 
-        let reader = BufReader::new(stdout);
-        for line in reader.lines().flatten() {
-            if let Some(row) = parse_tshark_fields_line(&line) {
-                if tx.send(row).is_err() {
-                    break;
-                }
+        match child.wait() {
+            Ok(status) => {
+                let _ = tx_err.send(format_tshark_exit_status(status));
+            }
+            Err(err) => {
+                let _ = tx_err.send(format!("[tshark wait error] {err}"));
             }
         }
 
-        // Let the UI know tshark exited.
-        let _ = tx_err.send("[tshark exited]".to_string());
-
-        let _ = child.kill();
-        let _ = child.wait();
+        if let Some(handle) = stderr_handle {
+            let _ = handle.join();
+        }
     });
 
     Ok((rx, rx_err))
