@@ -6,7 +6,7 @@ Thanks for checking out babyshark.
 Right now the **best way to contribute is by filing issues**.
 
 - I’m prioritizing **real-world bug reports** and **high-signal UX feedback** from users.
-- PRs are welcome, but I may not be able to review them quickly yet.
+- **Please do not open PRs right now.** I’m not reviewing PRs during the early launch window, and uncoordinated PRs will be **closed**.
 
 If you want to help, a great issue beats a half-baked PR.
 
@@ -82,12 +82,15 @@ Example:
 
 ---
 
-## Code contributions
+## PRs
 
-If you want to send a PR anyway:
-- Keep it small and focused
-- Add a test when it’s easy (especially for parsing or UI state)
-- Run locally:
-  - `cargo test --manifest-path rust/Cargo.toml`
+During the early launch window, I’m **not accepting PRs**. It’s too easy for drive-by changes to conflict with ongoing UX iteration.
+
+If you have a patch in mind:
+1) Open an issue first (include repro steps / screenshots / expected behavior)
+2) If the change is a good fit, I’ll label it and we can coordinate the best approach
+
+(If you open an uncoordinated PR, it will be closed with a link back to the issue.
+This isn’t personal — it’s just how I’m keeping the project manageable right now.)
 
 Thanks again — issues are the fastest way to make babyshark better right now.
