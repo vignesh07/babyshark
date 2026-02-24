@@ -2097,10 +2097,20 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                 }
 
                 match key.code {
-                    KeyCode::Char('o') => { app.view = View::Overview; app.show_onboarding = false; },
+                    KeyCode::Char('o') | KeyCode::Char('O') => { app.view = View::Overview; app.show_onboarding = false; },
                     KeyCode::Char('F') => { app.flows_back_view = app.view; app.view = View::Flows; app.show_onboarding = false; },
-                    KeyCode::Char('W') => { app.view = View::Weird; app.show_onboarding = false; },
-                    KeyCode::Char('D') => { app.view = View::Domains; app.show_onboarding = false; },
+                    KeyCode::Char('W') | KeyCode::Char('w') => { app.view = View::Weird; app.show_onboarding = false; },
+                    KeyCode::Char('D') | KeyCode::Char('d') => { app.view = View::Domains; app.show_onboarding = false; },
+                    KeyCode::Char('f') => {
+                        // lower-case f is "follow stream" in Packets; elsewhere treat as Flows shortcut.
+                        if app.view == View::Packets {
+                            app.open_stream();
+                        } else {
+                            app.flows_back_view = app.view;
+                            app.view = View::Flows;
+                        }
+                        app.show_onboarding = false;
+                    }
                     KeyCode::Char('?') => {
                         if matches!(app.view, View::Flows | View::Packets | View::Stream) {
                             app.modal = Modal::Explain;
@@ -2309,11 +2319,6 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                     }
                                 }
                             }
-                        }
-                    }
-                    KeyCode::Char('f') => {
-                        if app.view == View::Packets {
-                            app.open_stream();
                         }
                     }
                     KeyCode::Char(c) if c.is_ascii_digit() => {
