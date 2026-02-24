@@ -34,6 +34,69 @@ pub struct DomainsSummary {
     pub items: Vec<DomainItem>,
 }
 
+/// Build a best-effort IP → hostname index from the capture.
+///
+/// Sources:
+/// - DNS A/AAAA answers (offline payload parsing)
+/// - TLS SNI / HTTP Host hints (live or offline)
+///
+/// If multiple hostnames map to the same IP, we pick the most frequently observed.
+pub fn build_ip_hostname_index(
+    rows: &[PacketRow],
+) -> std::collections::BTreeMap<std::net::IpAddr, String> {
+    use std::collections::{BTreeMap, HashMap};
+    use std::net::IpAddr;
+
+    let mut counts: HashMap<IpAddr, HashMap<String, u64>> = HashMap::new();
+
+    for r in rows {
+        // DNS answers (offline payload)
+        if r.proto == Some(crate::pcap::L4Proto::Udp) {
+            let sp = r.src_port.unwrap_or(0);
+            let dp = r.dst_port.unwrap_or(0);
+            if sp == 53 || dp == 53 {
+                if let Some(msg) = parse_dns_message(&r.payload) {
+                    if msg.is_response && !msg.qname.is_empty() {
+                        for ip in msg.answer_ips {
+                            *counts
+                                .entry(ip)
+                                .or_default()
+                                .entry(msg.qname.clone())
+                                .or_default() += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        // TLS SNI / HTTP Host hints (works live)
+        if let Some(dst) = r.dst {
+            if let Some(sni) = r.tls_sni.as_deref() {
+                *counts
+                    .entry(dst)
+                    .or_default()
+                    .entry(sni.to_string())
+                    .or_default() += 1;
+            }
+            if let Some(host) = r.http_host.as_deref() {
+                *counts
+                    .entry(dst)
+                    .or_default()
+                    .entry(host.to_string())
+                    .or_default() += 1;
+            }
+        }
+    }
+
+    let mut out: BTreeMap<IpAddr, String> = BTreeMap::new();
+    for (ip, m) in counts {
+        if let Some((best, _n)) = m.into_iter().max_by_key(|(_k, v)| *v) {
+            out.insert(ip, best);
+        }
+    }
+    out
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DomainsSort {
     Connections,
@@ -42,6 +105,7 @@ pub enum DomainsSort {
 }
 
 pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex, sort: DomainsSort) -> DomainsSummary {
+
     let mut map: BTreeMap<String, DomainStats> = BTreeMap::new();
     let mut conns: BTreeMap<String, BTreeSet<usize>> = BTreeMap::new();
 

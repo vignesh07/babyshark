@@ -1639,6 +1639,8 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                 }
 
                 View::Flows => {
+                    let ip_host = crate::domains::build_ip_hostname_index(&app.rows);
+
                     let items: Vec<ListItem> = app
                         .visible_flow_indices
                         .iter()
@@ -1650,8 +1652,18 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                 crate::pcap::L4Proto::Udp => "UDP",
                                 crate::pcap::L4Proto::Other(_) => "L4",
                             };
-                            let line = Line::from(vec![
-                                Span::styled(format!("{:>3} ", row_i + 1), Style::default().fg(c_muted())),
+
+                            // Best-effort: label the dst IP (server-ish) with a hostname when known.
+                            let host = ip_host
+                                .get(&fl.key.dst)
+                                .or_else(|| ip_host.get(&fl.key.src))
+                                .cloned();
+
+                            let mut spans = vec![
+                                Span::styled(
+                                    format!("{:>3} ", row_i + 1),
+                                    Style::default().fg(c_muted()),
+                                ),
                                 Span::styled(format!("{:<3} ", proto), Style::default().fg(c_accent())),
                                 Span::styled(
                                     format!("{:>5} ", fl.total_packets),
@@ -1665,8 +1677,17 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                     "{}:{} ↔ {}:{}",
                                     fl.key.src, fl.key.src_port, fl.key.dst, fl.key.dst_port
                                 )),
-                            ]);
-                            Some(ListItem::new(line))
+                            ];
+
+                            if let Some(h) = host {
+                                spans.push(Span::raw(UI_SPACER));
+                                spans.push(Span::styled(
+                                    format!("[{h}]"),
+                                    Style::default().fg(Color::Rgb(160, 170, 190)),
+                                ));
+                            }
+
+                            Some(ListItem::new(Line::from(spans)))
                         })
                         .collect();
 
@@ -1702,6 +1723,8 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         return;
                     };
 
+                    let ip_host = crate::domains::build_ip_hostname_index(&app.rows);
+
                     let mut items: Vec<ListItem> = Vec::with_capacity(fl.packet_indices.len());
 
                     let mut prev_ts: Option<chrono::DateTime<chrono::Utc>> = None;
@@ -1727,19 +1750,13 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         };
                         prev_ts = Some(r.ts);
 
-                        let line = Line::from(vec![
+                        let mut spans = vec![
                             Span::styled(dir, Style::default().fg(c_accent())),
                             Span::raw(UI_ONE_SPACE),
                             Span::styled(format!("#{:<4} ", r.index), Style::default().fg(c_muted())),
-                            Span::styled(
-                                ts_str,
-                                Style::default().fg(Color::Rgb(200, 200, 210)),
-                            ),
+                            Span::styled(ts_str, Style::default().fg(Color::Rgb(200, 200, 210))),
                             Span::raw(UI_SPACER),
-                            Span::styled(
-                                delta_str,
-                                Style::default().fg(Color::Rgb(160, 170, 190)),
-                            ),
+                            Span::styled(delta_str, Style::default().fg(Color::Rgb(160, 170, 190))),
                             Span::raw(UI_SPACER),
                             Span::styled(
                                 format!("{:>4}B ", r.len),
@@ -1753,8 +1770,20 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                     .unwrap_or_default(),
                                 Style::default().fg(Color::Rgb(180, 190, 210)),
                             ),
-                            Span::styled(r.summary.clone(), Style::default().fg(c_text())),
-                        ]);
+                        ];
+
+                        if let Some(dst) = r.dst {
+                            if let Some(h) = ip_host.get(&dst) {
+                                spans.push(Span::styled(
+                                    format!("{h} "),
+                                    Style::default().fg(Color::Rgb(160, 170, 190)),
+                                ));
+                            }
+                        }
+
+                        spans.push(Span::styled(r.summary.clone(), Style::default().fg(c_text())));
+
+                        let line = Line::from(spans);
 
                         items.push(ListItem::new(line));
                     }
@@ -2404,7 +2433,6 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         View::Stream => {
                             app.scroll_down();
                         }
-                        _ => {}
                     },
                     KeyCode::Up | KeyCode::Char('k') => match app.view {
                         View::Overview => {
@@ -2435,7 +2463,6 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         View::Stream => {
                             app.scroll_up();
                         }
-                        _ => {}
                     },
                     _ => {}
                 }
