@@ -2248,6 +2248,19 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             app.open_stream();
                         }
                     }
+                    KeyCode::Char(c) if c.is_ascii_digit() => {
+                        let n = c.to_digit(10).unwrap_or(0) as usize;
+                        if n == 0 {
+                            // ignore
+                        } else if app.view == View::Weird {
+                            // 1-based selection
+                            app.weird_selected_row = n.saturating_sub(1);
+                        } else if app.view == View::Domains {
+                            app.domains_selected_row = n.saturating_sub(1);
+                        } else if app.view == View::Overview {
+                            app.overview_selected_row = n.saturating_sub(1);
+                        }
+                    }
                     KeyCode::Tab => {
                         if app.view == View::Stream {
                             app.tab_next();
