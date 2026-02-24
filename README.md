@@ -5,24 +5,61 @@
 Babyshark is a PCAP TUI that helps you answer:
 - What’s using the network?
 - What looks broken/weird?
-- What should I click next?
+- What should I select next?
 
 **Status:** v0.1.0 (alpha).
 - Offline `.pcap` / `.pcapng` viewing works without Wireshark
 - Live capture requires `tshark` (Wireshark CLI)
 
 
-### Overview 
+### Overview
 ![DB99A3F0-4AB7-461C-A40F-496F9C950AFC](https://github.com/user-attachments/assets/8dfb277c-a081-4feb-987e-6fc404e39f7e)
+
+**Overview is the “start here” dashboard.** It summarizes the capture and suggests what to do next.
+
+- Shows quick totals (packets/flows), a traffic mix, and “top” tables (ports/hosts/flows).
+- In live mode it shows capture status (pps + a last status/error line from `tshark`).
+
+**How to use it:**
+- Press `D` to jump to **Domains** (hostnames-first).
+- Press `W` to jump to **What’s weird?** (curated detectors).
+- Press `F` (or `f`) to jump to **Flows** (raw).
+- Many rows are drill-down entry points: select a row and press **Enter**.
 
 ### Domains
 ![5E1633E3-0E53-4085-AE98-6656121EAF8B](https://github.com/user-attachments/assets/7f4691cb-b930-46c6-85d8-6facfe9acfcd)
 
+**Domains groups traffic by hostname** so you can start from names instead of 5‑tuples.
+
+- Shows per-domain rollups (connections/bytes + query/response/failure-style counters).
+- The details pane shows “IP hints”. When DNS answers aren’t visible (DoH/DoT/caching), it can still show **Observed IPs (from flows)** using TLS SNI / HTTP Host hints.
+
+**How to use it:**
+- Select a domain and press **Enter** to drill into the relevant **Flows**.
+- Press `s` to change the sort mode.
+- Press `c` to clear an active subset filter.
+
 ### What's weird?
 ![B401B8AA-4EE7-42BE-A53A-DC4F6DFC562A](https://github.com/user-attachments/assets/bf8b8c1d-8c45-47a8-b9ec-17bc29a925d5)
 
+**What’s weird? is a curated set of detectors** meant to answer “what looks broken/slow?” without needing deep Wireshark knowledge.
+
+- Each detector includes a short “why it matters”.
+- Pressing **Enter** on a detector filters down to the affected flows so you can drill into packets/streams.
+
+**How to use it:**
+- Select a detector (you can also press `1`–`9` to jump-select) and press **Enter**.
+- Press `c` to clear an active subset filter.
+
 ### Expand
 ![Screenshot 2026-02-23 at 12 09 07 PM](https://github.com/user-attachments/assets/68cdf767-426b-41b0-85d4-b2e44fe12eac)
+
+**Expand / Explain (`?`) gives plain-English context** for what you’re looking at.
+
+- From **Flows**, press **Enter** to open **Packets**, then press `?` to open **Explain**.
+- Explain is best-effort: it tries to classify the flow and show “why I think that” + “next steps”.
+
+Tip: press `h` for help and `g` for glossary.
 
 
 ---
