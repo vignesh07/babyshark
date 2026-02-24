@@ -1111,7 +1111,7 @@ fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
 
     rows.push(OverviewRow {
         label: Line::from(vec![Span::styled(
-            "What should I click?",
+            "What should I select?", 
             Style::default().fg(c_text()).add_modifier(Modifier::BOLD),
         )]),
         action: None,
@@ -1189,7 +1189,7 @@ fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
 
     rows.push(OverviewRow {
         label: Line::from(vec![Span::styled(
-            "Top ports (click = filter flows)",
+            "Top ports (select = filter flows)",
             Style::default().fg(c_text()).add_modifier(Modifier::BOLD),
         )]),
         action: None,
@@ -1247,7 +1247,7 @@ fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
 
     rows.push(OverviewRow {
         label: Line::from(vec![Span::styled(
-            "Top flows (click = jump)",
+            "Top flows (select = jump)",
             Style::default().fg(c_text()).add_modifier(Modifier::BOLD),
         )]),
         action: None,
@@ -1876,22 +1876,22 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                 Modal::StreamSearch => Line::from(vec![
                     Span::styled("SEARCH", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
                     Span::raw(UI_SPACER),
-                    Span::styled("type query, Enter apply, Esc cancel, Ctrl+u clear", Style::default().fg(c_muted())),
+                    Span::styled("type query, Enter apply, Esc/Backspace cancel, Ctrl+u clear", Style::default().fg(c_muted())),
                 ]),
                 Modal::Explain => Line::from(vec![
                     Span::styled("EXPLAIN", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
                     Span::raw(UI_SPACER),
-                    Span::styled("Esc close", Style::default().fg(c_muted())),
+                    Span::styled("Esc/Backspace close", Style::default().fg(c_muted())),
                 ]),
                 Modal::Glossary => Line::from(vec![
                     Span::styled("GLOSSARY", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
                     Span::raw(UI_SPACER),
-                    Span::styled("Esc close", Style::default().fg(c_muted())),
+                    Span::styled("Esc/Backspace close", Style::default().fg(c_muted())),
                 ]),
                 Modal::Help => Line::from(vec![
                     Span::styled("HELP", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
                     Span::raw(UI_SPACER),
-                    Span::styled("Esc close", Style::default().fg(c_muted())),
+                    Span::styled("Esc/Backspace close", Style::default().fg(c_muted())),
                 ]),
                 Modal::None => match app.view {
                     View::Overview => Line::from(vec![
@@ -2138,8 +2138,8 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             };
                         }
                     }
-                    KeyCode::Esc => {
-                        // Esc is the "go back" key.
+                    KeyCode::Esc | KeyCode::Backspace => {
+                        // Esc/Backspace are the "go back" keys.
                         if app.view == View::Flows {
                             app.view = app.flows_back_view;
                         } else if app.view == View::Weird {
