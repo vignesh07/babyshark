@@ -149,6 +149,11 @@ Fedora:
 sudo dnf install -y wireshark-cli
 ```
 
+Arch:
+```bash
+sudo pacman -S wireshark-cli
+```
+
 Verify:
 ```bash
 tshark --version
