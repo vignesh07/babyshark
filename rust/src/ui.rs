@@ -1521,13 +1521,18 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                 Span::raw(UI_SPACER),
                                 Span::styled(
                                     format!(
-                                        "conn={} bytes={:.1}KB q={} r={} fail={} ips={}",
+                                        "conn={} bytes={:.1}KB q={} r={} fail={} ips={}{}",
                                         it.stats.connections,
                                         (it.stats.bytes as f64) / 1024.0,
                                         it.stats.queries,
                                         it.stats.responses,
                                         it.stats.failures,
-                                        it.stats.observed_ips.len().max(it.stats.dns_ips.len())
+                                        it.stats.observed_ips.len().max(it.stats.dns_ips.len()),
+                                        if !it.stats.observed_ips.is_empty() && it.stats.dns_ips.is_empty() {
+                                            "*"
+                                        } else {
+                                            ""
+                                        }
                                     ),
                                     Style::default().fg(if it.stats.failures > 0 {
                                         Color::Rgb(255, 215, 0)
@@ -1580,19 +1585,6 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             .map(|ip| ip.to_string())
                             .collect();
 
-                        let (ip_title, ip_lines): (&str, Vec<String>) = if !observed.is_empty() {
-                            ("Observed IPs (from flows):", observed)
-                        } else if !dns.is_empty() {
-                            ("Resolved IPs (DNS A/AAAA):", dns)
-                        } else {
-                            (
-                                "IP hints:",
-                                vec![
-                                    "(no IPs observed yet — likely DoH/DoT or cached DNS)".to_string(),
-                                ],
-                            )
-                        };
-
                         let mut out: Vec<Line> = vec![
                             Line::from(Span::styled(
                                 it.domain.clone(),
@@ -1607,19 +1599,49 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                 Style::default().fg(c_text()),
                             )),
                             Line::from(Span::raw("")),
-                            Line::from(Span::styled(
-                                ip_title,
-                                Style::default().fg(c_muted()).add_modifier(Modifier::BOLD),
-                            )),
                         ];
 
-                        for l in ip_lines {
-                            out.push(Line::from(Span::styled(l, Style::default().fg(c_text()))));
+                        if !observed.is_empty() {
+                            out.push(Line::from(Span::styled(
+                                "Observed IPs (from flows):",
+                                Style::default().fg(c_muted()).add_modifier(Modifier::BOLD),
+                            )));
+                            for l in observed {
+                                out.push(Line::from(Span::styled(l, Style::default().fg(c_text()))));
+                            }
+                            out.push(Line::from(Span::raw("")));
                         }
 
-                        out.push(Line::from(Span::raw("")));
+                        if !dns.is_empty() {
+                            out.push(Line::from(Span::styled(
+                                "DNS A/AAAA IPs (when visible):",
+                                Style::default().fg(c_muted()).add_modifier(Modifier::BOLD),
+                            )));
+                            for l in dns {
+                                out.push(Line::from(Span::styled(l, Style::default().fg(c_text()))));
+                            }
+                            out.push(Line::from(Span::raw("")));
+                        }
+
+                        if out.len() <= 4 {
+                            // No IP hints were added.
+                            out.push(Line::from(Span::styled(
+                                "IP hints:",
+                                Style::default().fg(c_muted()).add_modifier(Modifier::BOLD),
+                            )));
+                            out.push(Line::from(Span::styled(
+                                "(no IPs observed yet — likely DoH/DoT or cached DNS)",
+                                Style::default().fg(c_text()),
+                            )));
+                            out.push(Line::from(Span::raw("")));
+                        }
+
                         out.push(Line::from(Span::styled(
                             "Tip: Enter applies a subset filter (prefers observed IPs; DNS IPs if available).",
+                            Style::default().fg(c_muted()),
+                        )));
+                        out.push(Line::from(Span::styled(
+                            "Note: ips=* means observed-only (no DNS answers seen in capture).",
                             Style::default().fg(c_muted()),
                         )));
 
