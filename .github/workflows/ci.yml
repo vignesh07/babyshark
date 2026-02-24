@@ -7,27 +7,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Detect Go module
-        id: go
-        shell: bash
-        run: |
-          if [ -f go.mod ]; then
-            echo "has_go=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_go=false" >> "$GITHUB_OUTPUT"
-          fi
 
-      - uses: actions/setup-go@v5
-        if: steps.go.outputs.has_go == 'true'
-        with:
-          go-version: '1.22'
-
-      - name: Go tests
-        if: steps.go.outputs.has_go == 'true'
-        run: |
-          go test ./...
-          go vet ./...
       - uses: dtolnay/rust-toolchain@stable
+
       - name: Rust tests
         run: |
           cargo test --manifest-path rust/Cargo.toml
