@@ -132,6 +132,11 @@ pub struct App {
     pub selected_row: usize,
     pub visible_flow_indices: Vec<usize>,
 
+    // packets view state
+    pub packets_selected_row: usize,
+    pub packets_scroll_row: usize,
+    pub packets_viewport_rows: usize,
+
     // weird-mode (detector) state
     pub weird_selected_row: usize,
 
@@ -188,6 +193,9 @@ impl App {
             overview_selected_row: 0,
             selected_row: 0,
             visible_flow_indices: Vec::new(),
+            packets_selected_row: 0,
+            packets_scroll_row: 0,
+            packets_viewport_rows: 0,
             weird_selected_row: 0,
             domains_selected_row: 0,
             domains_sort: crate::domains::DomainsSort::Connections,
@@ -257,6 +265,8 @@ impl App {
 
     fn open_packets(&mut self) {
         self.view = View::Packets;
+        self.packets_selected_row = 0;
+        self.packets_scroll_row = 0;
     }
 
     fn open_stream(&mut self) {
@@ -1749,13 +1759,55 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         items.push(ListItem::new(line));
                     }
 
-                    let list = List::new(items).block(
-                        Block::default()
-                            .borders(Borders::ALL)
-                            .title("Packets  (f stream, Esc back)")
-                            .style(Style::default().bg(c_panel())),
-                    );
-                    f.render_widget(list, body_chunks[0]);
+                    // Update viewport for paging.
+                    app.packets_viewport_rows = body_chunks[0].height.saturating_sub(2) as usize;
+
+                    if !items.is_empty() {
+                        app.packets_selected_row = app.packets_selected_row.min(items.len() - 1);
+                    }
+
+                    // Render a window for scrolling/paging.
+                    let vp = app.packets_viewport_rows.max(1);
+                    if app.packets_scroll_row > app.packets_selected_row {
+                        app.packets_scroll_row = app.packets_selected_row;
+                    }
+                    if app.packets_selected_row >= app.packets_scroll_row + vp {
+                        app.packets_scroll_row = app.packets_selected_row.saturating_sub(vp - 1);
+                    }
+                    if !items.is_empty() {
+                        app.packets_scroll_row = app.packets_scroll_row.min(items.len().saturating_sub(1));
+                    } else {
+                        app.packets_scroll_row = 0;
+                    }
+
+                    let visible_items: Vec<ListItem> = items
+                        .into_iter()
+                        .skip(app.packets_scroll_row)
+                        .take(vp)
+                        .collect();
+
+                    let mut pkt_state = ListState::default();
+                    if !visible_items.is_empty() {
+                        let rel = app.packets_selected_row.saturating_sub(app.packets_scroll_row);
+                        pkt_state.select(Some(rel.min(visible_items.len() - 1)));
+                    }
+
+                    let list = List::new(visible_items)
+                        .block(
+                            Block::default()
+                                .borders(Borders::ALL)
+                                .title("Packets  (↑/↓ move, PgUp/PgDn page, f stream, Esc back)")
+                                .style(Style::default().bg(c_panel())),
+                        )
+                        .highlight_style(
+                            Style::default()
+                                .bg(c_highlight_bg())
+                                .fg(c_text())
+                                .add_modifier(Modifier::BOLD),
+                        )
+                        .highlight_symbol("❯ ");
+
+                    f.render_stateful_widget(list, body_chunks[0], &mut pkt_state);
                 }
                 View::Stream => {
                     let Some(fl) = app.selected_flow() else {
@@ -1947,10 +1999,14 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         Span::raw(" quit"),
                     ]),
                     View::Packets => Line::from(vec![
+                        Span::styled("↑/↓", Style::default().fg(Color::Green)),
+                        Span::raw(" move  "),
+                        Span::styled("PgUp/PgDn", Style::default().fg(Color::Green)),
+                        Span::raw(" page  "),
                         Span::styled("f", Style::default().fg(Color::Green)),
                         Span::raw(" stream  "),
                         Span::styled("Esc", Style::default().fg(Color::Green)),
-                        Span::raw(" back/clear  "),
+                        Span::raw(" back  "),
                         Span::styled("q", Style::default().fg(Color::Green)),
                         Span::raw(" quit"),
                     ]),
@@ -2283,6 +2339,34 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             app.tab_prev();
                         }
                     }
+                    KeyCode::PageDown => {
+                        if app.view == View::Packets {
+                            if let Some(fl) = app.selected_flow() {
+                                let len = fl.packet_indices.len();
+                                if len > 0 {
+                                    let vp = app.packets_viewport_rows.max(1);
+                                    let step = vp.saturating_sub(1).max(1);
+                                    app.packets_selected_row =
+                                        (app.packets_selected_row + step).min(len - 1);
+                                    if app.packets_selected_row >= app.packets_scroll_row + vp {
+                                        app.packets_scroll_row =
+                                            app.packets_selected_row.saturating_sub(vp - 1);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    KeyCode::PageUp => {
+                        if app.view == View::Packets {
+                            let vp = app.packets_viewport_rows.max(1);
+                            let step = vp.saturating_sub(1).max(1);
+                            app.packets_selected_row =
+                                app.packets_selected_row.saturating_sub(step);
+                            if app.packets_selected_row < app.packets_scroll_row {
+                                app.packets_scroll_row = app.packets_selected_row;
+                            }
+                        }
+                    }
                     KeyCode::Down | KeyCode::Char('j') => match app.view {
                         View::Overview => {
                             app.overview_selected_row = app.overview_selected_row.saturating_add(1);
@@ -2296,6 +2380,21 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         }
                         View::Domains => {
                             app.domains_selected_row = app.domains_selected_row.saturating_add(1);
+                        }
+                        View::Packets => {
+                            if let Some(fl) = app.selected_flow() {
+                                let len = fl.packet_indices.len();
+                                if len > 0 {
+                                    app.packets_selected_row =
+                                        (app.packets_selected_row + 1).min(len - 1);
+                                    // keep selected row visible
+                                    let vp = app.packets_viewport_rows.max(1);
+                                    if app.packets_selected_row >= app.packets_scroll_row + vp {
+                                        app.packets_scroll_row =
+                                            app.packets_selected_row.saturating_sub(vp - 1);
+                                    }
+                                }
+                            }
                         }
                         View::Stream => {
                             app.scroll_down();
@@ -2315,6 +2414,18 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         }
                         View::Domains => {
                             app.domains_selected_row = app.domains_selected_row.saturating_sub(1);
+                        }
+                        View::Packets => {
+                            if let Some(_fl) = app.selected_flow() {
+                                app.packets_selected_row = app.packets_selected_row.saturating_sub(1);
+                                let vp = app.packets_viewport_rows.max(1);
+                                if app.packets_selected_row < app.packets_scroll_row {
+                                    app.packets_scroll_row = app.packets_selected_row;
+                                } else if app.packets_selected_row >= app.packets_scroll_row + vp {
+                                    app.packets_scroll_row =
+                                        app.packets_selected_row.saturating_sub(vp - 1);
+                                }
+                            }
                         }
                         View::Stream => {
                             app.scroll_up();
