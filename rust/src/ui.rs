@@ -2,6 +2,15 @@ use crate::casefile::CaseFile;
 use crate::flow::{FlowIndex, FlowStats};
 use crate::pcap::{FlowDir, PacketRow};
 use chrono::Local;
+mod modals;
+use modals::{
+    build_explain_lines, build_glossary_lines, build_help_lines, render_explain_modal,
+    render_glossary_modal, render_help_modal, render_search_modal,
+};
+#[cfg(test)]
+use modals::{
+    STREAM_SEARCH_MODAL_HELP, STREAM_SEARCH_STATUS_NO_MATCHES, STREAM_SEARCH_STATUS_TYPE_TO_SEARCH,
+};
 // stream module referenced via `crate::stream::...`
 use crate::ui_filter::FlowFilter;
 use anyhow::Result;
@@ -975,14 +984,19 @@ fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
         rows.push(OverviewRow {
             label: Line::from(vec![Span::styled(
                 "New here?",
-                Style::default().fg(Color::Rgb(255, 215, 0)).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Rgb(255, 215, 0))
+                    .add_modifier(Modifier::BOLD),
             )]),
             action: None,
         });
         rows.push(OverviewRow {
             label: Line::from(vec![
                 Span::styled("• ", Style::default().fg(c_muted())),
-                Span::styled("Press D", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Press D",
+                    Style::default().fg(c_accent()).add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(" for Domains (human view)", Style::default().fg(c_text())),
             ]),
             action: None,
@@ -990,15 +1004,24 @@ fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
         rows.push(OverviewRow {
             label: Line::from(vec![
                 Span::styled("• ", Style::default().fg(c_muted())),
-                Span::styled("Press W", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
-                Span::styled(" for Weird stuff (troubleshoot)", Style::default().fg(c_text())),
+                Span::styled(
+                    "Press W",
+                    Style::default().fg(c_accent()).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    " for Weird stuff (troubleshoot)",
+                    Style::default().fg(c_text()),
+                ),
             ]),
             action: None,
         });
         rows.push(OverviewRow {
             label: Line::from(vec![
                 Span::styled("• ", Style::default().fg(c_muted())),
-                Span::styled("Press F", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Press F",
+                    Style::default().fg(c_accent()).add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(" for Flows (raw)", Style::default().fg(c_text())),
             ]),
             action: None,
@@ -1006,7 +1029,10 @@ fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
         rows.push(OverviewRow {
             label: Line::from(vec![
                 Span::styled("• ", Style::default().fg(c_muted())),
-                Span::styled("Press h", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Press h",
+                    Style::default().fg(c_accent()).add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(" for help, g for glossary", Style::default().fg(c_text())),
                 Span::styled("  (x dismiss)", Style::default().fg(c_muted())),
             ]),
@@ -1125,7 +1151,7 @@ fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
 
     rows.push(OverviewRow {
         label: Line::from(vec![Span::styled(
-            "What should I select?", 
+            "What should I select?",
             Style::default().fg(c_text()).add_modifier(Modifier::BOLD),
         )]),
         action: None,
@@ -1133,7 +1159,12 @@ fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
     rows.push(OverviewRow {
         label: Line::from(vec![
             Span::styled("• ", Style::default().fg(c_muted())),
-            Span::styled("Domains (human view)", Style::default().fg(Color::Rgb(255, 215, 0)).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Domains (human view)",
+                Style::default()
+                    .fg(Color::Rgb(255, 215, 0))
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled("  (press D)", Style::default().fg(c_muted())),
         ]),
         // Domains row uses a dedicated keybind; make it obvious even if Enter does nothing.
@@ -1143,7 +1174,12 @@ fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
     rows.push(OverviewRow {
         label: Line::from(vec![
             Span::styled("• ", Style::default().fg(c_muted())),
-            Span::styled("Weird stuff (troubleshoot)", Style::default().fg(Color::Rgb(255, 215, 0)).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Weird stuff (troubleshoot)",
+                Style::default()
+                    .fg(Color::Rgb(255, 215, 0))
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled("  (press W)", Style::default().fg(c_muted())),
         ]),
         action: Some(OverviewAction::GoWeird),
@@ -1191,7 +1227,10 @@ fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
     });
     rows.push(OverviewRow {
         label: Line::from(Span::styled(
-            format!("TCP: {}  UDP: {}  Other: {}", ov.protos.tcp, ov.protos.udp, ov.protos.other),
+            format!(
+                "TCP: {}  UDP: {}  Other: {}",
+                ov.protos.tcp, ov.protos.udp, ov.protos.other
+            ),
             Style::default().fg(c_muted()),
         )),
         action: None,
@@ -1273,7 +1312,10 @@ fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
                 Span::styled(format!("#{:>2} ", i + 1), Style::default().fg(c_muted())),
                 Span::styled(fl.label(), Style::default().fg(c_text())),
                 Span::raw(UI_SPACER),
-                Span::styled(format!("{}B", fl.total_bytes), Style::default().fg(c_muted())),
+                Span::styled(
+                    format!("{}B", fl.total_bytes),
+                    Style::default().fg(c_muted()),
+                ),
             ]),
             action: app
                 .flows
@@ -2171,10 +2213,23 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                 }
 
                 match key.code {
-                    KeyCode::Char('o') | KeyCode::Char('O') => { app.view = View::Overview; app.show_onboarding = false; },
-                    KeyCode::Char('F') => { app.flows_back_view = app.view; app.view = View::Flows; app.show_onboarding = false; },
-                    KeyCode::Char('W') | KeyCode::Char('w') => { app.view = View::Weird; app.show_onboarding = false; },
-                    KeyCode::Char('D') | KeyCode::Char('d') => { app.view = View::Domains; app.show_onboarding = false; },
+                    KeyCode::Char('o') | KeyCode::Char('O') => {
+                        app.view = View::Overview;
+                        app.show_onboarding = false;
+                    }
+                    KeyCode::Char('F') => {
+                        app.flows_back_view = app.view;
+                        app.view = View::Flows;
+                        app.show_onboarding = false;
+                    }
+                    KeyCode::Char('W') | KeyCode::Char('w') => {
+                        app.view = View::Weird;
+                        app.show_onboarding = false;
+                    }
+                    KeyCode::Char('D') | KeyCode::Char('d') => {
+                        app.view = View::Domains;
+                        app.show_onboarding = false;
+                    }
                     KeyCode::Char('f') => {
                         // lower-case f is "follow stream" in Packets; elsewhere treat as Flows shortcut.
                         if app.view == View::Packets {
@@ -2305,16 +2360,16 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                 let sel = app.weird_selected_row.min(weird.items.len() - 1);
                                 app.weird_selected_row = sel;
                                 if let Some(it) = weird.items.get(sel) {
-                                let mut subset = it.flow_indices.clone();
-                                subset.sort_unstable();
-                                subset.dedup();
-                                app.flow_subset = Some(subset);
-                                app.subset_label = Some(format!("weird:{}", it.title));
-                                app.flows_back_view = View::Weird;
-                                app.view = View::Flows;
-                                app.selected_row = 0;
-                                app.apply_filter();
-                                flow_state.select(Some(app.selected_row));
+                                    let mut subset = it.flow_indices.clone();
+                                    subset.sort_unstable();
+                                    subset.dedup();
+                                    app.flow_subset = Some(subset);
+                                    app.subset_label = Some(format!("weird:{}", it.title));
+                                    app.flows_back_view = View::Weird;
+                                    app.view = View::Flows;
+                                    app.selected_row = 0;
+                                    app.apply_filter();
+                                    flow_state.select(Some(app.selected_row));
                                 }
                             }
                         } else if app.view == View::Domains {
@@ -2329,16 +2384,16 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                 let sel = app.domains_selected_row.min(dom.items.len() - 1);
                                 app.domains_selected_row = sel;
                                 if let Some(it) = dom.items.get(sel) {
-                                let mut subset = it.flow_indices.clone();
-                                subset.sort_unstable();
-                                subset.dedup();
-                                app.flow_subset = Some(subset);
-                                app.subset_label = Some(format!("domain:{}", it.domain));
-                                app.flows_back_view = View::Domains;
-                                app.view = View::Flows;
-                                app.selected_row = 0;
-                                app.apply_filter();
-                                flow_state.select(Some(app.selected_row));
+                                    let mut subset = it.flow_indices.clone();
+                                    subset.sort_unstable();
+                                    subset.dedup();
+                                    app.flow_subset = Some(subset);
+                                    app.subset_label = Some(format!("domain:{}", it.domain));
+                                    app.flows_back_view = View::Domains;
+                                    app.view = View::Flows;
+                                    app.selected_row = 0;
+                                    app.apply_filter();
+                                    flow_state.select(Some(app.selected_row));
                                 }
                             }
                         } else if app.view == View::Overview {
@@ -2499,7 +2554,8 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         }
                         View::Packets => {
                             if let Some(_fl) = app.selected_flow() {
-                                app.packets_selected_row = app.packets_selected_row.saturating_sub(1);
+                                app.packets_selected_row =
+                                    app.packets_selected_row.saturating_sub(1);
                                 let vp = app.packets_viewport_rows.max(1);
                                 if app.packets_selected_row < app.packets_scroll_row {
                                     app.packets_scroll_row = app.packets_selected_row;
@@ -3163,389 +3219,4 @@ mod tests {
         app.tab_next();
         assert!(matches!(app.stream_tab, StreamTab::Combined));
     }
-}
-
-const STREAM_SEARCH_MODAL_TITLE: &str = "Stream search";
-const STREAM_SEARCH_MODAL_HELP: &str =
-    "Enter = apply   Esc = cancel   Ctrl+u = clear   (n/N next/prev, Tab/Shift-Tab switch stream)";
-const STREAM_SEARCH_STATUS_TYPE_TO_SEARCH: &str = "type to search";
-const STREAM_SEARCH_STATUS_MATCH_FOUND: &str = "match found (n/N to navigate)";
-const STREAM_SEARCH_STATUS_NO_MATCHES: &str = "no matches";
-
-fn build_explain_lines(app: &App) -> Vec<Line<'static>> {
-    let Some(fl) = app.selected_flow() else {
-        return vec![Line::from(Span::styled(
-            "No flow selected.",
-            Style::default().fg(c_muted()),
-        ))];
-    };
-
-    let ex = crate::explain::explain_flow(&app.rows, fl);
-
-    let mut out: Vec<Line> = Vec::new();
-    out.push(Line::from(vec![Span::styled(
-        ex.title,
-        Style::default().fg(c_accent()).add_modifier(Modifier::BOLD),
-    )]));
-    out.push(Line::from(Span::raw("")));
-
-    out.push(Line::from(vec![
-        Span::styled("Likely: ", Style::default().fg(c_muted())),
-        Span::styled(
-            ex.likely,
-            Style::default().fg(c_text()).add_modifier(Modifier::BOLD),
-        ),
-    ]));
-
-    if !ex.why.is_empty() {
-        out.push(Line::from(Span::raw("")));
-        out.push(Line::from(Span::styled(
-            "Why I think that:",
-            Style::default().fg(c_muted()).add_modifier(Modifier::BOLD),
-        )));
-        for w in ex.why.iter().take(8) {
-            out.push(Line::from(vec![
-                Span::styled("• ", Style::default().fg(c_muted())),
-                Span::styled(w.to_string(), Style::default().fg(c_text())),
-            ]));
-        }
-    }
-
-    if !ex.next.is_empty() {
-        out.push(Line::from(Span::raw("")));
-        out.push(Line::from(Span::styled(
-            "Next steps:",
-            Style::default().fg(c_muted()).add_modifier(Modifier::BOLD),
-        )));
-        for n in ex.next.iter().take(8) {
-            out.push(Line::from(vec![
-                Span::styled("• ", Style::default().fg(c_muted())),
-                Span::styled(n.to_string(), Style::default().fg(c_text())),
-            ]));
-        }
-    }
-
-    out.push(Line::from(Span::raw("")));
-    out.push(Line::from(Span::styled(
-        "Esc to close",
-        Style::default().fg(c_muted()),
-    )));
-
-    out
-}
-
-fn render_explain_modal(
-    f: &mut ratatui::Frame,
-    size: ratatui::layout::Rect,
-    lines: &[Line<'static>],
-) {
-    let area = centered_rect(80, 60, size);
-    f.render_widget(Clear, area);
-    let inner = area.inner(Margin {
-        horizontal: 2,
-        vertical: 1,
-    });
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title("Explain")
-        .style(Style::default().bg(c_panel()).fg(c_text()));
-    f.render_widget(block, area);
-
-    let p = Paragraph::new(lines.to_vec())
-        .wrap(Wrap { trim: true })
-        .style(Style::default().bg(c_panel()).fg(c_text()));
-    f.render_widget(p, inner);
-}
-
-fn build_glossary_lines() -> Vec<Line<'static>> {
-    let mut out: Vec<Line<'static>> = Vec::new();
-
-    out.push(Line::from(Span::styled(
-        "Glossary",
-        Style::default().fg(c_accent()).add_modifier(Modifier::BOLD),
-    )));
-    out.push(Line::from(Span::raw("")));
-
-    out.push(Line::from(Span::styled(
-        "TCP flags",
-        Style::default().fg(c_muted()).add_modifier(Modifier::BOLD),
-    )));
-    out.push(Line::from(vec![
-        Span::styled("• SYN: ", Style::default().fg(c_muted())),
-        Span::styled("Start a TCP connection.", Style::default().fg(c_text())),
-    ]));
-    out.push(Line::from(vec![
-        Span::styled("• ACK: ", Style::default().fg(c_muted())),
-        Span::styled("Acknowledges received bytes.", Style::default().fg(c_text())),
-    ]));
-    out.push(Line::from(vec![
-        Span::styled("• FIN: ", Style::default().fg(c_muted())),
-        Span::styled("Graceful close.", Style::default().fg(c_text())),
-    ]));
-    out.push(Line::from(vec![
-        Span::styled("• RST: ", Style::default().fg(c_muted())),
-        Span::styled("Abort / refused connection.", Style::default().fg(c_text())),
-    ]));
-
-    out.push(Line::from(Span::raw("")));
-    out.push(Line::from(Span::styled(
-        "DNS failure codes",
-        Style::default().fg(c_muted()).add_modifier(Modifier::BOLD),
-    )));
-    out.push(Line::from(vec![
-        Span::styled("• NXDOMAIN: ", Style::default().fg(c_muted())),
-        Span::styled("Name does not exist.", Style::default().fg(c_text())),
-    ]));
-    out.push(Line::from(vec![
-        Span::styled("• SERVFAIL: ", Style::default().fg(c_muted())),
-        Span::styled("Resolver error.", Style::default().fg(c_text())),
-    ]));
-
-    out.push(Line::from(Span::raw("")));
-    out.push(Line::from(Span::styled(
-        "Protocols",
-        Style::default().fg(c_muted()).add_modifier(Modifier::BOLD),
-    )));
-    out.push(Line::from(vec![
-        Span::styled("• TCP: ", Style::default().fg(c_muted())),
-        Span::styled(
-            "Reliable, ordered stream (retransmits on loss).",
-            Style::default().fg(c_text()),
-        ),
-    ]));
-    out.push(Line::from(vec![
-        Span::styled("• UDP: ", Style::default().fg(c_muted())),
-        Span::styled(
-            "Unreliable datagrams (no built-in retransmit).",
-            Style::default().fg(c_text()),
-        ),
-    ]));
-    out.push(Line::from(vec![
-        Span::styled("• QUIC: ", Style::default().fg(c_muted())),
-        Span::styled(
-            "Reliable transport over UDP (used by HTTP/3).",
-            Style::default().fg(c_text()),
-        ),
-    ]));
-
-    out.push(Line::from(Span::raw("")));
-    out.push(Line::from(Span::styled(
-        "Streams",
-        Style::default().fg(c_muted()).add_modifier(Modifier::BOLD),
-    )));
-    out.push(Line::from(vec![
-        Span::styled("• Follow stream: ", Style::default().fg(c_muted())),
-        Span::styled(
-            "Reassembled payload bytes for a TCP flow direction (best-effort).",
-            Style::default().fg(c_text()),
-        ),
-    ]));
-    out.push(Line::from(vec![
-        Span::styled("• TLS note: ", Style::default().fg(c_muted())),
-        Span::styled(
-            "HTTPS payload is encrypted; without keys you typically can’t inspect contents.",
-            Style::default().fg(c_text()),
-        ),
-    ]));
-
-    out.push(Line::from(Span::raw("")));
-    out.push(Line::from(Span::styled(
-        "Esc/Backspace to close",
-        Style::default().fg(c_muted()),
-    )));
-
-    out
-}
-
-fn render_glossary_modal(
-    f: &mut ratatui::Frame,
-    size: ratatui::layout::Rect,
-    lines: &[Line<'static>],
-) {
-    let area = centered_rect(80, 60, size);
-    f.render_widget(Clear, area);
-    let inner = area.inner(Margin {
-        horizontal: 2,
-        vertical: 1,
-    });
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title("Glossary")
-        .style(Style::default().bg(c_panel()).fg(c_text()));
-    f.render_widget(block, area);
-
-    let p = Paragraph::new(lines.to_vec())
-        .wrap(Wrap { trim: true })
-        .style(Style::default().bg(c_panel()).fg(c_text()));
-    f.render_widget(p, inner);
-}
-
-fn build_help_lines() -> Vec<Line<'static>> {
-    vec![
-        Line::from(Span::styled(
-            "Start here",
-            Style::default().fg(c_accent()).add_modifier(Modifier::BOLD),
-        )),
-        Line::from(Span::raw("")),
-        Line::from(vec![
-            Span::styled("o ", Style::default().fg(Color::Green)),
-            Span::styled("Overview", Style::default().fg(c_text())),
-            Span::styled("  (what’s going on)", Style::default().fg(c_muted())),
-        ]),
-        Line::from(vec![
-            Span::styled("D ", Style::default().fg(Color::Green)),
-            Span::styled("Domains", Style::default().fg(c_text())),
-            Span::styled("  (hostnames + drill down)", Style::default().fg(c_muted())),
-        ]),
-        Line::from(vec![
-            Span::styled("W ", Style::default().fg(Color::Green)),
-            Span::styled("Weird stuff", Style::default().fg(c_text())),
-            Span::styled("  (troubleshoot)", Style::default().fg(c_muted())),
-        ]),
-        Line::from(vec![
-            Span::styled("F ", Style::default().fg(Color::Green)),
-            Span::styled("Flows", Style::default().fg(c_text())),
-            Span::styled("  (raw)", Style::default().fg(c_muted())),
-        ]),
-        Line::from(Span::raw("")),
-        Line::from(Span::styled(
-            "Universal keys",
-            Style::default().fg(c_muted()).add_modifier(Modifier::BOLD),
-        )),
-        Line::from(vec![
-            Span::styled("Enter", Style::default().fg(Color::Green)),
-            Span::styled(" drill down", Style::default().fg(c_text())),
-            Span::styled("   ", Style::default()),
-            Span::styled("Esc", Style::default().fg(Color::Green)),
-            Span::styled(" back", Style::default().fg(c_text())),
-        ]),
-        Line::from(vec![
-            Span::styled("/", Style::default().fg(Color::Green)),
-            Span::styled(" filter (Flows)", Style::default().fg(c_text())),
-            Span::styled("   ", Style::default()),
-            Span::styled("c", Style::default().fg(Color::Green)),
-            Span::styled(" clear subset", Style::default().fg(c_text())),
-        ]),
-        Line::from(vec![
-            Span::styled("?", Style::default().fg(Color::Green)),
-            Span::styled(" explain", Style::default().fg(c_text())),
-            Span::styled("   ", Style::default()),
-            Span::styled("g", Style::default().fg(Color::Green)),
-            Span::styled(" glossary", Style::default().fg(c_text())),
-            Span::styled("   ", Style::default()),
-            Span::styled("L", Style::default().fg(Color::Green)),
-            Span::styled(" learning", Style::default().fg(c_text())),
-        ]),
-        Line::from(Span::raw("")),
-        Line::from(Span::styled(
-            "Esc to close",
-            Style::default().fg(c_muted()),
-        )),
-    ]
-}
-
-fn render_help_modal(
-    f: &mut ratatui::Frame,
-    size: ratatui::layout::Rect,
-    lines: &[Line<'static>],
-) {
-    let area = centered_rect(80, 60, size);
-    f.render_widget(Clear, area);
-    let inner = area.inner(Margin {
-        horizontal: 2,
-        vertical: 1,
-    });
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title("Help")
-        .style(Style::default().bg(c_panel()).fg(c_text()));
-    f.render_widget(block, area);
-
-    let p = Paragraph::new(lines.to_vec())
-        .wrap(Wrap { trim: true })
-        .style(Style::default().bg(c_panel()).fg(c_text()));
-    f.render_widget(p, inner);
-}
-
-fn render_search_modal(
-    f: &mut ratatui::Frame,
-    size: ratatui::layout::Rect,
-    input: &str,
-    match_count: usize,
-    has_match: bool,
-) {
-    let area = centered_rect(70, 22, size);
-    f.render_widget(Clear, area);
-    let inner = area.inner(Margin {
-        horizontal: 2,
-        vertical: 1,
-    });
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(STREAM_SEARCH_MODAL_TITLE)
-        .style(Style::default().bg(c_panel()).fg(c_text()));
-    f.render_widget(block, area);
-
-    let q = if input.is_empty() { "(empty)" } else { input };
-
-    let status = if input.is_empty() {
-        STREAM_SEARCH_STATUS_TYPE_TO_SEARCH
-    } else if has_match {
-        STREAM_SEARCH_STATUS_MATCH_FOUND
-    } else {
-        STREAM_SEARCH_STATUS_NO_MATCHES
-    };
-
-    let mut lines = vec![
-        Line::from(vec![
-            Span::styled("Query: ", Style::default().fg(c_muted())),
-            Span::raw(q.to_string()),
-        ]),
-        Line::from(Span::raw("")),
-        Line::from(vec![
-            Span::styled("Status: ", Style::default().fg(c_muted())),
-            Span::styled(
-                status,
-                Style::default().fg(if input.is_empty() {
-                    c_muted()
-                } else if has_match {
-                    Color::Green
-                } else {
-                    Color::Red
-                }),
-            ),
-        ]),
-        Line::from(vec![
-            Span::styled("Matches: ", Style::default().fg(c_muted())),
-            Span::styled(
-                format!("{match_count}{}", match_cap_suffix(match_count)),
-                Style::default().fg(if input.is_empty() {
-                    c_muted()
-                } else if match_count > 0 {
-                    Color::Green
-                } else {
-                    Color::Red
-                }),
-            ),
-        ]),
-        Line::from(Span::raw("")),
-        Line::from(Span::styled(
-            STREAM_SEARCH_MODAL_HELP,
-            Style::default().fg(c_muted()),
-        )),
-    ];
-
-    // keep layout stable
-    if lines.len() < 5 {
-        lines.push(Line::from(Span::raw("")));
-    }
-
-    let p = Paragraph::new(lines)
-        .wrap(Wrap { trim: true })
-        .style(Style::default().bg(c_panel()).fg(c_text()));
-    f.render_widget(p, inner);
 }
