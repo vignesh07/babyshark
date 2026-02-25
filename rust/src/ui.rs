@@ -113,6 +113,7 @@ pub struct App {
     pub live_iface: Option<String>,
     pub live_rx: Option<std::sync::mpsc::Receiver<crate::pcap::PacketRow>>,
     pub live_err_rx: Option<std::sync::mpsc::Receiver<String>>,
+    pub live_stop_tx: Option<std::sync::mpsc::Sender<()>>,
     pub live_last_stderr: Option<String>,
     pub live_total_packets: usize,
     pub live_pps: f64,
@@ -188,6 +189,7 @@ impl App {
             live_iface: None,
             live_rx: None,
             live_err_rx: None,
+            live_stop_tx: None,
             live_last_stderr: None,
             live_total_packets: 0,
             live_pps: 0.0,
@@ -248,6 +250,15 @@ impl App {
 
         if self.selected_row >= self.visible_flow_indices.len() {
             self.selected_row = self.visible_flow_indices.len().saturating_sub(1);
+        }
+    }
+
+    fn shutdown_live_capture(&mut self) {
+        // Drop receivers first so the background thread doesn't block sending while we tear down.
+        self.live_rx = None;
+        self.live_err_rx = None;
+        if let Some(tx) = self.live_stop_tx.take() {
+            let _ = tx.send(());
         }
     }
 
@@ -676,6 +687,7 @@ pub fn run_tui(app: &mut App) -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     let res = run_loop(&mut terminal, app);
+    app.shutdown_live_capture();
 
     disable_raw_mode().ok();
     execute!(terminal.backend_mut(), LeaveAlternateScreen).ok();
@@ -2262,7 +2274,10 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             app.show_onboarding = false;
                         }
                     }
-                    KeyCode::Char('q') => return Ok(()),
+                    KeyCode::Char('q') => {
+                        app.shutdown_live_capture();
+                        return Ok(());
+                    }
                     KeyCode::Char('/') => {
                         if app.view == View::Flows {
                             app.open_filter();
@@ -2658,6 +2673,24 @@ fn render_modal(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shutdown_live_capture_sends_stop_signal_once() {
+        let mut app = App::new(
+            "/tmp/nope.pcap",
+            Vec::new(),
+            FlowIndex { flows: Vec::new() },
+        );
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        app.live_stop_tx = Some(tx);
+
+        app.shutdown_live_capture();
+
+        assert_eq!(rx.try_recv(), Ok(()));
+        assert!(app.live_stop_tx.is_none());
+        assert!(app.live_rx.is_none());
+        assert!(app.live_err_rx.is_none());
+    }
 
     #[test]
     fn compute_live_drop_is_saturating() {

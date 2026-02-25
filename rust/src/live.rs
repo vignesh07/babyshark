@@ -3,7 +3,8 @@ use chrono::{DateTime, Utc};
 use std::io::{BufRead, BufReader};
 use std::net::IpAddr;
 use std::process::{Child, Command, ExitStatus, Stdio};
-use std::sync::mpsc::{self, Receiver};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use crate::pcap::{FlowDir, FlowKey, L4Proto, PacketRow};
@@ -280,16 +281,14 @@ pub fn parse_tshark_fields_line(line: &str) -> Option<PacketRow> {
         tcp_retransmission,
         tcp_out_of_order,
         dns_qname: dns_qname.map(|s| s.to_string()),
-        dns_rcode: parts
-            .get(15)
-            .and_then(|s| {
-                let s = s.trim();
-                if s.is_empty() {
-                    None
-                } else {
-                    s.parse::<u16>().ok()
-                }
-            }),
+        dns_rcode: parts.get(15).and_then(|s| {
+            let s = s.trim();
+            if s.is_empty() {
+                None
+            } else {
+                s.parse::<u16>().ok()
+            }
+        }),
         http_host: http_host.map(|s| s.to_string()),
         tls_sni: tls_sni.map(|s| s.to_string()),
     };
@@ -498,25 +497,22 @@ pub fn spawn_live_capture_tshark_fields(
     iface: String,
     bpf: Option<String>,
     dfilter: Option<String>,
-) -> Result<(Receiver<PacketRow>, Receiver<String>)> {
+) -> Result<(Receiver<PacketRow>, Receiver<String>, Sender<()>)> {
     let _ver = tshark_version().context("tshark not available (required for --live)")?;
 
     let (tx, rx) = mpsc::channel::<PacketRow>();
     let (tx_err, rx_err) = mpsc::channel::<String>();
+    let (tx_stop, rx_stop) = mpsc::channel::<()>();
 
     thread::spawn(move || {
-        let mut child = match spawn_tshark_child_fields(
-            &iface,
-            bpf.as_deref(),
-            dfilter.as_deref(),
-            None,
-        ) {
-            Ok(c) => c,
-            Err(err) => {
-                let _ = tx_err.send(format!("[tshark spawn failed] {err}"));
-                return;
-            }
-        };
+        let mut child =
+            match spawn_tshark_child_fields(&iface, bpf.as_deref(), dfilter.as_deref(), None) {
+                Ok(c) => c,
+                Err(err) => {
+                    let _ = tx_err.send(format!("[tshark spawn failed] {err}"));
+                    return;
+                }
+            };
 
         let Some(stdout) = child.stdout.take() else {
             let _ = tx_err.send("[tshark error] stdout pipe unavailable".to_string());
@@ -524,19 +520,57 @@ pub fn spawn_live_capture_tshark_fields(
             let _ = child.wait();
             return;
         };
+        let stderr = child.stderr.take();
+        let child = Arc::new(Mutex::new(child));
+
+        // Listen for explicit app shutdown and terminate tshark promptly.
+        let child_stop = Arc::clone(&child);
+        let tx_err_stop = tx_err.clone();
+        let stop_handle = thread::spawn(move || {
+            if rx_stop.recv().is_err() {
+                return;
+            }
+
+            let mut guard = match child_stop.lock() {
+                Ok(g) => g,
+                Err(_) => {
+                    let _ = tx_err_stop.send("[tshark stop error] child lock poisoned".to_string());
+                    return;
+                }
+            };
+            if let Err(err) = guard.kill() {
+                if err.kind() != std::io::ErrorKind::InvalidInput {
+                    let _ = tx_err_stop.send(format!("[tshark stop error] {err}"));
+                }
+            }
+        });
 
         // Drain stderr so tshark can't block on a full stderr pipe.
-        let stderr_handle = child
-            .stderr
-            .take()
-            .map(|stderr| drain_tshark_stderr(stderr, tx_err.clone()));
+        let stderr_handle = stderr.map(|stderr| drain_tshark_stderr(stderr, tx_err.clone()));
 
         let ui_gone = forward_tshark_stdout(stdout, &tx, &tx_err);
         if ui_gone {
-            let _ = child.kill();
+            let mut guard = match child.lock() {
+                Ok(g) => g,
+                Err(_) => {
+                    let _ = tx_err.send("[tshark error] child lock poisoned".to_string());
+                    return;
+                }
+            };
+            let _ = guard.kill();
         }
 
-        match child.wait() {
+        let wait_result = {
+            let mut guard = match child.lock() {
+                Ok(g) => g,
+                Err(_) => {
+                    let _ = tx_err.send("[tshark wait error] child lock poisoned".to_string());
+                    return;
+                }
+            };
+            guard.wait()
+        };
+        match wait_result {
             Ok(status) => {
                 let _ = tx_err.send(format_tshark_exit_status(status));
             }
@@ -548,9 +582,10 @@ pub fn spawn_live_capture_tshark_fields(
         if let Some(handle) = stderr_handle {
             let _ = handle.join();
         }
+        drop(stop_handle);
     });
 
-    Ok((rx, rx_err))
+    Ok((rx, rx_err, tx_stop))
 }
 
 #[cfg(test)]

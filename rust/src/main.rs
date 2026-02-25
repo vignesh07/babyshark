@@ -69,7 +69,7 @@ fn main() -> Result<()> {
 
     if let Some(iface) = args.live {
         babyshark::live::tshark_live_preflight(&iface)?;
-        let (rx, err_rx) = babyshark::live::spawn_live_capture_tshark_fields(
+        let (rx, err_rx, stop_tx) = babyshark::live::spawn_live_capture_tshark_fields(
             iface.clone(),
             args.bpf.clone(),
             args.dfilter.clone(),
@@ -82,6 +82,7 @@ fn main() -> Result<()> {
         app.live_iface = Some(iface);
         app.live_rx = Some(rx);
         app.live_err_rx = Some(err_rx);
+        app.live_stop_tx = Some(stop_tx);
         babyshark::ui::run_tui(&mut app)?;
         return Ok(());
     }
@@ -113,7 +114,7 @@ fn interactive_launcher() -> Result<()> {
         "2" => interactive_open_pcap(),
         "q" | "Q" => Ok(()),
         _ => {
-            println!("(unknown choice)" );
+            println!("(unknown choice)");
             Ok(())
         }
     }
@@ -122,7 +123,7 @@ fn interactive_launcher() -> Result<()> {
 fn interactive_open_pcap() -> Result<()> {
     use std::io::{stdin, stdout, Write};
 
-    println!("\nEnter path to .pcap/.pcapng:" );
+    println!("\nEnter path to .pcap/.pcapng:");
     print!("> ");
     let _ = stdout().flush();
 
@@ -143,18 +144,17 @@ fn interactive_open_pcap() -> Result<()> {
 fn interactive_live_capture() -> Result<()> {
     use std::io::{stdin, stdout, Write};
 
-    let ver = babyshark::live::tshark_version().map_err(|e| {
-        anyhow::anyhow!("tshark not available (required for live capture): {e}")
-    })?;
-    println!("\n{ver}\n" );
+    let ver = babyshark::live::tshark_version()
+        .map_err(|e| anyhow::anyhow!("tshark not available (required for live capture): {e}"))?;
+    println!("\n{ver}\n");
 
     let ifaces = babyshark::live::tshark_list_ifaces()?;
     if ifaces.is_empty() {
-        println!("(no interfaces found)" );
+        println!("(no interfaces found)");
         return Ok(());
     }
 
-    println!("Pick an interface:" );
+    println!("Pick an interface:");
     for i in &ifaces {
         if let Some(desc) = &i.desc {
             println!("{}. {} ({})", i.index, i.name, desc);
@@ -163,7 +163,7 @@ fn interactive_live_capture() -> Result<()> {
         }
     }
 
-    println!("\nEnter interface number (or q to quit):" );
+    println!("\nEnter interface number (or q to quit):");
     print!("> ");
     let _ = stdout().flush();
 
@@ -182,11 +182,8 @@ fn interactive_live_capture() -> Result<()> {
         .ok_or_else(|| anyhow::anyhow!("unknown interface index {idx}"))?;
 
     babyshark::live::tshark_live_preflight(&iface)?;
-    let (rx, err_rx) = babyshark::live::spawn_live_capture_tshark_fields(
-        iface.clone(),
-        None,
-        None,
-    )?;
+    let (rx, err_rx, stop_tx) =
+        babyshark::live::spawn_live_capture_tshark_fields(iface.clone(), None, None)?;
 
     let mut app = babyshark::ui::App::new(
         &format!("live:{iface}"),
@@ -196,8 +193,8 @@ fn interactive_live_capture() -> Result<()> {
     app.live_iface = Some(iface);
     app.live_rx = Some(rx);
     app.live_err_rx = Some(err_rx);
+    app.live_stop_tx = Some(stop_tx);
     babyshark::ui::run_tui(&mut app)?;
 
     Ok(())
 }
-
