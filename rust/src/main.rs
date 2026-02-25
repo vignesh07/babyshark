@@ -61,7 +61,8 @@ fn main() -> Result<()> {
 
     if let Some(pcap) = args.pcap {
         let rows = babyshark::pcap::read_pcap(&pcap)?;
-        let flows = babyshark::flow::FlowIndex::build(&rows);
+        let mut flows = babyshark::flow::FlowIndex::build(&rows);
+        babyshark::flow::analyze_flows(&mut flows, &rows);
         let mut app = babyshark::ui::App::new(&pcap, rows, flows);
         babyshark::ui::run_tui(&mut app)?;
         return Ok(());
@@ -135,7 +136,8 @@ fn interactive_open_pcap() -> Result<()> {
     }
 
     let rows = babyshark::pcap::read_pcap(&p)?;
-    let flows = babyshark::flow::FlowIndex::build(&rows);
+    let mut flows = babyshark::flow::FlowIndex::build(&rows);
+    babyshark::flow::analyze_flows(&mut flows, &rows);
     let mut app = babyshark::ui::App::new(&p, rows, flows);
     babyshark::ui::run_tui(&mut app)?;
     Ok(())

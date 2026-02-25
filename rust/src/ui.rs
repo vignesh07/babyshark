@@ -375,6 +375,7 @@ impl App {
         // periodically rebuild flows + visible indices.
         if self.live_pending_rebuild >= REBUILD_EVERY {
             self.flows = FlowIndex::build(&self.rows);
+            crate::flow::analyze_flows(&mut self.flows, &self.rows);
             self.apply_filter();
             self.live_pending_rebuild = 0;
         }
