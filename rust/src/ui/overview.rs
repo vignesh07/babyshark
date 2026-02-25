@@ -77,6 +77,17 @@ pub(super) fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
             label: Line::from(vec![
                 Span::styled("• ", Style::default().fg(c_muted())),
                 Span::styled(
+                    "Press G",
+                    Style::default().fg(c_accent()).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(" for Timeline (Gantt + Scatter)", Style::default().fg(c_text())),
+            ]),
+            action: None,
+        });
+        rows.push(OverviewRow {
+            label: Line::from(vec![
+                Span::styled("• ", Style::default().fg(c_muted())),
+                Span::styled(
                     "Press h",
                     Style::default().fg(c_accent()).add_modifier(Modifier::BOLD),
                 ),
@@ -239,6 +250,15 @@ pub(super) fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
             Span::styled("  (press F)", Style::default().fg(c_muted())),
         ]),
         action: Some(OverviewAction::GoFlows),
+    });
+
+    rows.push(OverviewRow {
+        label: Line::from(vec![
+            Span::styled("• ", Style::default().fg(c_muted())),
+            Span::styled("Timeline (Gantt + Scatter)", Style::default().fg(c_accent())),
+            Span::styled("  (press G)", Style::default().fg(c_muted())),
+        ]),
+        action: None,
     });
 
     if weird.items.iter().any(|it| !it.flow_indices.is_empty()) {
