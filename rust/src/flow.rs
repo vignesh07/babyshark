@@ -56,6 +56,8 @@ pub struct FlowStats {
     pub b_to_a: DirStats,
     pub packet_indices: Vec<usize>,
     pub analysis: Option<FlowAnalysis>,
+    pub first_ts: Option<chrono::DateTime<chrono::Utc>>,
+    pub last_ts: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl Default for FlowStats {
@@ -75,6 +77,8 @@ impl Default for FlowStats {
             b_to_a: DirStats::default(),
             packet_indices: Vec::new(),
             analysis: None,
+            first_ts: None,
+            last_ts: None,
         }
     }
 }
@@ -187,6 +191,20 @@ impl FlowIndex {
         }
 
         let mut flows: Vec<FlowStats> = map.into_values().collect();
+
+        // Derive first/last timestamps from packet_indices (which are in row order = time order).
+        for fl in flows.iter_mut() {
+            if let Some(&first) = fl.packet_indices.first() {
+                if let Some(r) = rows.get(first) {
+                    fl.first_ts = Some(r.ts);
+                }
+            }
+            if let Some(&last) = fl.packet_indices.last() {
+                if let Some(r) = rows.get(last) {
+                    fl.last_ts = Some(r.ts);
+                }
+            }
+        }
         // deterministic ordering: by total_bytes desc, then key
         flows.sort_by(|a, b| {
             b.total_bytes
@@ -609,5 +627,28 @@ mod tests {
             .unwrap()
             .tcp_timing
             .is_none());
+    }
+
+    #[test]
+    fn first_last_ts_set_after_build() {
+        let rows = vec![
+            tcp_row(0, 100, 60, 1111, 80, TCP_FLAG_SYN, 0, false),
+            tcp_row(1, 200, 60, 1111, 80, TCP_FLAG_SYN | TCP_FLAG_ACK, 0, false),
+            tcp_row(2, 500, 500, 1111, 80, TCP_FLAG_ACK, 100, false),
+        ];
+        let flows = FlowIndex::build(&rows);
+        assert_eq!(flows.flows.len(), 1);
+        let fl = &flows.flows[0];
+        assert_eq!(fl.first_ts, Some(Utc.timestamp_millis_opt(100).unwrap()));
+        assert_eq!(fl.last_ts, Some(Utc.timestamp_millis_opt(500).unwrap()));
+    }
+
+    #[test]
+    fn first_last_ts_single_packet() {
+        let rows = vec![tcp_row(0, 42, 60, 1111, 80, TCP_FLAG_SYN, 0, false)];
+        let flows = FlowIndex::build(&rows);
+        let fl = &flows.flows[0];
+        assert_eq!(fl.first_ts, fl.last_ts);
+        assert!(fl.first_ts.is_some());
     }
 }

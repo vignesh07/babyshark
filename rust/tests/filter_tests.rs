@@ -24,6 +24,8 @@ fn mk_flow(proto: L4Proto) -> FlowStats {
         },
         packet_indices: vec![0, 1],
         analysis: None,
+        first_ts: None,
+        last_ts: None,
     }
 }
 
