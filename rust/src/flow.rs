@@ -19,8 +19,8 @@ pub enum HealthBadge {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AsymmetryLabel {
-    DownloadHeavy,
-    UploadHeavy,
+    AtoBHeavy,
+    BtoAHeavy,
     Balanced,
 }
 
@@ -214,9 +214,9 @@ fn compute_asymmetry(fl: &FlowStats) -> AsymmetryLabel {
     }
     let a_frac = (fl.a_to_b.bytes as f64) / (total as f64);
     if a_frac > 0.70 {
-        AsymmetryLabel::UploadHeavy
+        AsymmetryLabel::AtoBHeavy
     } else if a_frac < 0.30 {
-        AsymmetryLabel::DownloadHeavy
+        AsymmetryLabel::BtoAHeavy
     } else {
         AsymmetryLabel::Balanced
     }
@@ -347,7 +347,10 @@ mod tests {
         ];
         let mut flows = FlowIndex::build(&rows);
         analyze_flows(&mut flows, &rows);
-        assert_eq!(flows.flows[0].analysis.as_ref().unwrap().health, HealthBadge::Green);
+        assert_eq!(
+            flows.flows[0].analysis.as_ref().unwrap().health,
+            HealthBadge::Green
+        );
     }
 
     #[test]
@@ -358,7 +361,10 @@ mod tests {
         ];
         let mut flows = FlowIndex::build(&rows);
         analyze_flows(&mut flows, &rows);
-        assert_eq!(flows.flows[0].analysis.as_ref().unwrap().health, HealthBadge::Red);
+        assert_eq!(
+            flows.flows[0].analysis.as_ref().unwrap().health,
+            HealthBadge::Red
+        );
     }
 
     #[test]
@@ -370,7 +376,10 @@ mod tests {
         ];
         let mut flows = FlowIndex::build(&rows);
         analyze_flows(&mut flows, &rows);
-        assert_eq!(flows.flows[0].analysis.as_ref().unwrap().health, HealthBadge::Red);
+        assert_eq!(
+            flows.flows[0].analysis.as_ref().unwrap().health,
+            HealthBadge::Red
+        );
     }
 
     #[test]
@@ -382,48 +391,74 @@ mod tests {
         ];
         let mut flows = FlowIndex::build(&rows);
         analyze_flows(&mut flows, &rows);
-        assert_eq!(flows.flows[0].analysis.as_ref().unwrap().health, HealthBadge::Yellow);
+        assert_eq!(
+            flows.flows[0].analysis.as_ref().unwrap().health,
+            HealthBadge::Yellow
+        );
     }
 
     #[test]
-    fn asymmetry_download_heavy() {
-        // a_to_b: 100 bytes, b_to_a: 900 bytes → download-heavy (a_frac = 0.1).
+    fn asymmetry_b_to_a_heavy() {
+        // a_to_b: 100 bytes, b_to_a: 900 bytes => B->A-heavy (a_frac = 0.1).
         let mut fl = FlowStats::default();
-        fl.a_to_b = DirStats { packets: 1, bytes: 100 };
-        fl.b_to_a = DirStats { packets: 9, bytes: 900 };
-        assert_eq!(compute_asymmetry(&fl), AsymmetryLabel::DownloadHeavy);
+        fl.a_to_b = DirStats {
+            packets: 1,
+            bytes: 100,
+        };
+        fl.b_to_a = DirStats {
+            packets: 9,
+            bytes: 900,
+        };
+        assert_eq!(compute_asymmetry(&fl), AsymmetryLabel::BtoAHeavy);
     }
 
     #[test]
-    fn asymmetry_upload_heavy() {
+    fn asymmetry_a_to_b_heavy() {
         let mut fl = FlowStats::default();
-        fl.a_to_b = DirStats { packets: 9, bytes: 900 };
-        fl.b_to_a = DirStats { packets: 1, bytes: 100 };
-        assert_eq!(compute_asymmetry(&fl), AsymmetryLabel::UploadHeavy);
+        fl.a_to_b = DirStats {
+            packets: 9,
+            bytes: 900,
+        };
+        fl.b_to_a = DirStats {
+            packets: 1,
+            bytes: 100,
+        };
+        assert_eq!(compute_asymmetry(&fl), AsymmetryLabel::AtoBHeavy);
     }
 
     #[test]
     fn asymmetry_balanced() {
         let mut fl = FlowStats::default();
-        fl.a_to_b = DirStats { packets: 5, bytes: 500 };
-        fl.b_to_a = DirStats { packets: 5, bytes: 500 };
+        fl.a_to_b = DirStats {
+            packets: 5,
+            bytes: 500,
+        };
+        fl.b_to_a = DirStats {
+            packets: 5,
+            bytes: 500,
+        };
         assert_eq!(compute_asymmetry(&fl), AsymmetryLabel::Balanced);
     }
 
     #[test]
     fn tcp_timing_extraction() {
         let rows = vec![
-            tcp_row(0, 0, 60, 1111, 80, TCP_FLAG_SYN, 0, false),         // t=0
+            tcp_row(0, 0, 60, 1111, 80, TCP_FLAG_SYN, 0, false), // t=0
             tcp_row(1, 50, 60, 1111, 80, TCP_FLAG_SYN | TCP_FLAG_ACK, 0, false), // t=50ms
-            tcp_row(2, 80, 500, 1111, 80, TCP_FLAG_ACK, 100, false),      // t=80ms, first data
-            tcp_row(3, 200, 500, 1111, 80, TCP_FLAG_ACK, 100, false),     // t=200ms, last data
+            tcp_row(2, 80, 500, 1111, 80, TCP_FLAG_ACK, 100, false), // t=80ms, first data
+            tcp_row(3, 200, 500, 1111, 80, TCP_FLAG_ACK, 100, false), // t=200ms, last data
         ];
         let mut flows = FlowIndex::build(&rows);
         analyze_flows(&mut flows, &rows);
 
-        let timing = flows.flows[0].analysis.as_ref().unwrap().tcp_timing.unwrap();
-        assert_eq!(timing.handshake_rtt_us, Some(50_000));  // 50ms
-        assert_eq!(timing.server_think_us, Some(30_000));   // 30ms
+        let timing = flows.flows[0]
+            .analysis
+            .as_ref()
+            .unwrap()
+            .tcp_timing
+            .unwrap();
+        assert_eq!(timing.handshake_rtt_us, Some(50_000)); // 50ms
+        assert_eq!(timing.server_think_us, Some(30_000)); // 30ms
         assert_eq!(timing.data_transfer_us, Some(120_000)); // 120ms
     }
 
@@ -461,6 +496,11 @@ mod tests {
         };
         let mut flows = FlowIndex::build(&[row]);
         analyze_flows(&mut flows, &[]);
-        assert!(flows.flows[0].analysis.as_ref().unwrap().tcp_timing.is_none());
+        assert!(flows.flows[0]
+            .analysis
+            .as_ref()
+            .unwrap()
+            .tcp_timing
+            .is_none());
     }
 }

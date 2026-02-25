@@ -250,8 +250,9 @@ fn parse_tls_sni(payload: &[u8]) -> Option<String> {
 }
 
 fn parse_tls_version(payload: &[u8]) -> Option<u16> {
-    // Extract the client_version from a TLS ClientHello.
-    // Record header (5 bytes) + handshake header (4 bytes) + client_version (2 bytes).
+    // Extract TLS version from ServerHello when available.
+    // For TLS 1.3 this reads the supported_versions extension (0x002b);
+    // otherwise it falls back to ServerHello legacy_version.
     if payload.len() < 5 {
         return None;
     }
@@ -262,19 +263,77 @@ fn parse_tls_version(payload: &[u8]) -> Option<u16> {
     if payload.len() < 5 + rec_len {
         return None;
     }
-    let mut off = 5;
-    if off + 4 > payload.len() {
-        return None;
+    let rec_end = 5 + rec_len;
+    let mut off = 5usize;
+
+    // A record can carry multiple handshake messages.
+    while off + 4 <= rec_end {
+        let hs_type = payload[off];
+        let hs_len = ((payload[off + 1] as usize) << 16)
+            | ((payload[off + 2] as usize) << 8)
+            | (payload[off + 3] as usize);
+        off += 4;
+
+        if off + hs_len > rec_end {
+            break;
+        }
+
+        if hs_type == 2 {
+            // ServerHello
+            let hs = &payload[off..off + hs_len];
+            if hs.len() < 2 + 32 + 1 + 2 + 1 {
+                return None;
+            }
+
+            let legacy_version = u16::from_be_bytes([hs[0], hs[1]]);
+            let mut p = 2 + 32; // legacy_version + random
+
+            let sid_len = hs[p] as usize;
+            p += 1;
+            if p + sid_len > hs.len() {
+                return None;
+            }
+            p += sid_len;
+
+            if p + 2 + 1 > hs.len() {
+                return None;
+            }
+            p += 2; // cipher_suite
+            p += 1; // compression_method
+
+            if p == hs.len() {
+                return Some(legacy_version);
+            }
+            if p + 2 > hs.len() {
+                return None;
+            }
+            let ext_len = u16::from_be_bytes([hs[p], hs[p + 1]]) as usize;
+            p += 2;
+            if p + ext_len > hs.len() {
+                return None;
+            }
+            let ext_end = p + ext_len;
+            while p + 4 <= ext_end {
+                let ext_type = u16::from_be_bytes([hs[p], hs[p + 1]]);
+                let e_len = u16::from_be_bytes([hs[p + 2], hs[p + 3]]) as usize;
+                p += 4;
+                if p + e_len > ext_end {
+                    break;
+                }
+                if ext_type == 0x002b && e_len == 2 {
+                    // TLS 1.3+ negotiated version.
+                    return Some(u16::from_be_bytes([hs[p], hs[p + 1]]));
+                }
+                p += e_len;
+            }
+
+            return Some(legacy_version);
+        }
+
+        off += hs_len;
     }
-    if payload[off] != 1 {
-        return None; // not ClientHello
-    }
-    off += 4; // skip handshake header (type + 3-byte length)
-    if off + 2 > payload.len() {
-        return None;
-    }
-    let version = u16::from_be_bytes([payload[off], payload[off + 1]]);
-    Some(version)
+
+    None
 }
 
 #[cfg(test)]
@@ -305,8 +364,7 @@ mod tests {
             0x00, 0x00, // nscount
             0x00, 0x00, // arcount
             // qname: a.com
-            0x01, b'a', 0x03, b'c', b'o', b'm', 0x00,
-            0x00, 0x01, // qtype A
+            0x01, b'a', 0x03, b'c', b'o', b'm', 0x00, 0x00, 0x01, // qtype A
             0x00, 0x01, // qclass IN
         ];
 
@@ -344,33 +402,54 @@ mod tests {
     }
 
     #[test]
-    fn tls_version_extracts_from_client_hello() {
-        // Minimal TLS 1.2 ClientHello (enough for version parsing).
-        // Record header: content_type=22 (handshake), version=0x0301, length=39
-        // Handshake header: type=1 (ClientHello), length=35
-        // ClientHello: client_version=0x0303 (TLS 1.2), random=32 bytes, session_id_len=0
-        let mut p: Vec<u8> = Vec::new();
-        // TLS record header
-        p.push(22); // content_type: handshake
-        p.extend_from_slice(&[0x03, 0x01]); // record version: TLS 1.0 (legacy)
-        p.extend_from_slice(&[0x00, 0x27]); // record length: 39 bytes
-        // Handshake header
-        p.push(1); // handshake type: ClientHello
-        p.extend_from_slice(&[0x00, 0x00, 0x23]); // handshake length: 35 bytes
-        // ClientHello body
-        p.extend_from_slice(&[0x03, 0x03]); // client_version: TLS 1.2
-        p.extend_from_slice(&[0u8; 32]); // random
-        p.push(0); // session_id length: 0
+    fn tls_version_extracts_from_server_hello() {
+        fn wrap_handshake(hs_type: u8, hs_body: &[u8]) -> Vec<u8> {
+            let hs_len = hs_body.len();
+            let rec_len = hs_len + 4;
 
-        assert_eq!(parse_tls_version(&p), Some(0x0303));
+            let mut out = Vec::with_capacity(5 + rec_len);
+            // TLS record header
+            out.push(22); // handshake
+            out.extend_from_slice(&[0x03, 0x03]); // legacy record version
+            out.extend_from_slice(&(rec_len as u16).to_be_bytes());
+            // Handshake header
+            out.push(hs_type);
+            out.push(((hs_len >> 16) & 0xff) as u8);
+            out.push(((hs_len >> 8) & 0xff) as u8);
+            out.push((hs_len & 0xff) as u8);
+            out.extend_from_slice(hs_body);
+            out
+        }
 
-        // TLS 1.0 version
-        let mut p10 = p.clone();
-        p10[9] = 0x03;
-        p10[10] = 0x01;
-        assert_eq!(parse_tls_version(&p10), Some(0x0301));
+        // TLS 1.2-style ServerHello (no extensions; version from legacy_version).
+        let mut sh12 = Vec::new();
+        sh12.extend_from_slice(&[0x03, 0x03]); // legacy_version TLS1.2
+        sh12.extend_from_slice(&[0u8; 32]); // random
+        sh12.push(0); // session id len
+        sh12.extend_from_slice(&[0x13, 0x01]); // cipher
+        sh12.push(0); // compression
+        sh12.extend_from_slice(&[0x00, 0x00]); // ext len
+        let p12 = wrap_handshake(2, &sh12); // ServerHello
+        assert_eq!(parse_tls_version(&p12), Some(0x0303));
 
-        // Not a handshake
+        // TLS 1.3-style ServerHello with supported_versions extension = 0x0304.
+        let mut sh13 = Vec::new();
+        sh13.extend_from_slice(&[0x03, 0x03]); // legacy_version stays 0x0303
+        sh13.extend_from_slice(&[0u8; 32]); // random
+        sh13.push(0); // session id len
+        sh13.extend_from_slice(&[0x13, 0x01]); // cipher
+        sh13.push(0); // compression
+                      // extensions length = 6 bytes (type + len + value)
+        sh13.extend_from_slice(&[0x00, 0x06]);
+        // supported_versions extension
+        sh13.extend_from_slice(&[0x00, 0x2b, 0x00, 0x02, 0x03, 0x04]);
+        let p13 = wrap_handshake(2, &sh13);
+        assert_eq!(parse_tls_version(&p13), Some(0x0304));
+
+        // ClientHello should not be treated as negotiated version.
+        let ch = wrap_handshake(1, &[0u8; 34]);
+        assert_eq!(parse_tls_version(&ch), None);
+
         assert_eq!(parse_tls_version(b"not tls"), None);
         assert_eq!(parse_tls_version(&[]), None);
     }

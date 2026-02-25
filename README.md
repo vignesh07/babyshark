@@ -93,9 +93,9 @@ babyshark --help
   - optional write-to-file while capturing
 - Per-flow analysis:
   - **Health badges** — colored dot (green/yellow/red) on each flow based on RST, incomplete handshakes, retransmissions
-  - **Asymmetry labels** — DL/UL suffix in flow list + "download-heavy/upload-heavy/balanced" in details
+  - **Asymmetry labels** — `A>B` / `B>A` suffix in flow list + `A->B-heavy` / `B->A-heavy` / `balanced` in details
   - **TCP timing** — handshake RTT, server think time, data transfer duration in the details pane
-  - **TLS version display** — shows negotiated TLS version, flags deprecated versions (≤ TLS 1.1)
+  - **TLS version display** — shows negotiated version from ServerHello when visible, flags deprecated versions (<= TLS 1.1)
 - Weird detectors:
   - TCP resets, handshake-not-completed, DNS failures, retransmit/OOO hints, high-latency flows
   - **Deprecated TLS** — flags flows using TLS 1.0 or 1.1
@@ -306,15 +306,15 @@ congestion, or retries. This is a rough heuristic and depends on correct timesta
 ```text
 Flows [LIVE en0] (63.8 pps)  (Enter packets, / filter, t/u toggles, b bookmark, E export, o overview)  subset=domain:chat.openai.com
 
-● 1 UDP  510   10.0.0.6:59175 ↔ 203.0.113.123:443 DL
-❯● 2 TCP   32   10.0.0.6:57608 ↔ 198.51.100.42:443 DL
+● 1 UDP  510   10.0.0.6:59175 ↔ 203.0.113.123:443 B>A
+❯● 2 TCP   32   10.0.0.6:57608 ↔ 198.51.100.42:443 B>A
 
 Details
 TCP 10.0.0.6:57608 ↔ 198.51.100.42:443
 
 A→B: 14 pkts / 1386 bytes
 B→A: 26 pkts / 26307 bytes
-Direction: download-heavy
+Direction: B->A-heavy
 
 Handshake RTT: 12.450ms
 Server think:  3.200ms

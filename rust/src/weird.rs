@@ -35,6 +35,16 @@ fn row_has_tcp_flag(row: &PacketRow, flag: u16) -> bool {
     row.tcp_flags.map(|m| (m & flag) != 0).unwrap_or(false)
 }
 
+fn first_observed_destination(
+    fl: &crate::flow::FlowStats,
+    rows: &[PacketRow],
+) -> Option<std::net::IpAddr> {
+    fl.packet_indices
+        .first()
+        .and_then(|&pi| rows.get(pi))
+        .and_then(|r| r.dst)
+}
+
 pub fn build_weird_summary(rows: &[PacketRow], flows: &FlowIndex) -> WeirdSummary {
     let mut out: Vec<WeirdItem> = Vec::new();
 
@@ -194,7 +204,9 @@ pub fn build_weird_summary(rows: &[PacketRow], flows: &FlowIndex) -> WeirdSummar
                 last_ts = Some(last_ts.map(|t| t.max(r.ts)).unwrap_or(r.ts));
             }
 
-            let (Some(a), Some(b)) = (first_ts, last_ts) else { continue };
+            let (Some(a), Some(b)) = (first_ts, last_ts) else {
+                continue;
+            };
             let dur_ms = (b - a).num_milliseconds();
             if dur_ms >= MIN_DURATION_MS {
                 flow_indices.push(i);
@@ -236,7 +248,7 @@ pub fn build_weird_summary(rows: &[PacketRow], flows: &FlowIndex) -> WeirdSummar
     {
         use std::collections::HashMap;
 
-        // Group flows by dst IP, record first-packet timestamp for each.
+        // Group flows by first observed destination IP, record first-packet timestamp for each.
         let mut dst_flows: HashMap<std::net::IpAddr, Vec<(usize, chrono::DateTime<chrono::Utc>)>> =
             HashMap::new();
 
@@ -246,8 +258,9 @@ pub fn build_weird_summary(rows: &[PacketRow], flows: &FlowIndex) -> WeirdSummar
                 .first()
                 .and_then(|&pi| rows.get(pi))
                 .map(|r| r.ts);
-            if let Some(ts) = first_ts {
-                dst_flows.entry(fl.key.dst).or_default().push((i, ts));
+            let first_dst = first_observed_destination(fl, rows);
+            if let (Some(ts), Some(dst)) = (first_ts, first_dst) {
+                dst_flows.entry(dst).or_default().push((i, ts));
             }
         }
 
@@ -265,9 +278,7 @@ pub fn build_weird_summary(rows: &[PacketRow], flows: &FlowIndex) -> WeirdSummar
             for start in 0..entries.len() {
                 let t0 = entries[start].1;
                 let mut end = start;
-                while end < entries.len()
-                    && (entries[end].1 - t0).num_seconds() <= WINDOW_S
-                {
+                while end < entries.len() && (entries[end].1 - t0).num_seconds() <= WINDOW_S {
                     end += 1;
                 }
                 if end - start >= THRESHOLD {
@@ -483,14 +494,22 @@ mod tests {
         let rows = vec![mk(0, Some(0x0301))];
         let flows = FlowIndex::build(&rows);
         let w = build_weird_summary(&rows, &flows);
-        let item = w.items.iter().find(|it| it.title.contains("Deprecated TLS")).unwrap();
+        let item = w
+            .items
+            .iter()
+            .find(|it| it.title.contains("Deprecated TLS"))
+            .unwrap();
         assert_eq!(item.flow_indices.len(), 1);
 
         // Flow with TLS 1.2 should NOT be flagged.
         let rows = vec![mk(0, Some(0x0303))];
         let flows = FlowIndex::build(&rows);
         let w = build_weird_summary(&rows, &flows);
-        let item = w.items.iter().find(|it| it.title.contains("Deprecated TLS")).unwrap();
+        let item = w
+            .items
+            .iter()
+            .find(|it| it.title.contains("Deprecated TLS"))
+            .unwrap();
         assert_eq!(item.flow_indices.len(), 0);
     }
 
@@ -534,7 +553,11 @@ mod tests {
 
         let flows = FlowIndex::build(&rows);
         let w = build_weird_summary(&rows, &flows);
-        let item = w.items.iter().find(|it| it.title.contains("Chatty")).unwrap();
+        let item = w
+            .items
+            .iter()
+            .find(|it| it.title.contains("Chatty"))
+            .unwrap();
         assert_eq!(item.flow_indices.len(), 12);
     }
 
@@ -578,8 +601,69 @@ mod tests {
 
         let flows = FlowIndex::build(&rows);
         let w = build_weird_summary(&rows, &flows);
-        let item = w.items.iter().find(|it| it.title.contains("Chatty")).unwrap();
+        let item = w
+            .items
+            .iter()
+            .find(|it| it.title.contains("Chatty"))
+            .unwrap();
         assert_eq!(item.flow_indices.len(), 0);
     }
-}
 
+    #[test]
+    fn chatty_hosts_uses_observed_destination_not_canonical_dst() {
+        use chrono::{TimeZone, Utc};
+
+        // 10 flows to the same observed destination, but canonical key.dst differs per flow
+        // because src IP > dst IP for each row (canonicalization flips tuple order).
+        let rows: Vec<PacketRow> = (0..10)
+            .map(|i| {
+                let src = format!("10.0.0.{}", i + 2).parse().unwrap();
+                let dst = "1.1.1.1".parse().unwrap();
+                PacketRow {
+                    index: i,
+                    ts: Utc.timestamp_opt(10_000 + i as i64, 0).unwrap(),
+                    len: 60,
+                    src: Some(src),
+                    dst: Some(dst),
+                    proto: Some(L4Proto::Tcp),
+                    src_port: Some(40_000 + i as u16),
+                    dst_port: Some(443),
+                    summary: String::new(),
+                    flow: Some(FlowKey {
+                        src,
+                        dst,
+                        src_port: 40_000 + i as u16,
+                        dst_port: 443,
+                        proto: L4Proto::Tcp,
+                    }),
+                    flow_dir: Some(FlowDir::AtoB),
+                    tcp_seq: None,
+                    tcp_ack: None,
+                    tcp_flags: None,
+                    payload: Vec::new(),
+                    tcp_retransmission: false,
+                    tcp_out_of_order: false,
+                    dns_qname: None,
+                    dns_rcode: None,
+                    http_host: None,
+                    tls_sni: None,
+                    tls_version: None,
+                }
+            })
+            .collect();
+
+        let flows = FlowIndex::build(&rows);
+        // Sanity: canonical destination is not shared across all flows in this setup.
+        let distinct_canonical_dsts: std::collections::HashSet<_> =
+            flows.flows.iter().map(|f| f.key.dst).collect();
+        assert!(distinct_canonical_dsts.len() > 1);
+
+        let w = build_weird_summary(&rows, &flows);
+        let item = w
+            .items
+            .iter()
+            .find(|it| it.title.contains("Chatty"))
+            .unwrap();
+        assert_eq!(item.flow_indices.len(), 10);
+    }
+}

@@ -7,6 +7,26 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+- Per-flow analysis in Flows/Details:
+  - health badge (green/yellow/red)
+  - directional asymmetry label
+  - TCP timing metrics (handshake RTT, server think, transfer duration)
+- New weird detectors:
+  - deprecated TLS versions (<= 1.1)
+  - chatty hosts bursts (>= 10 flows to a destination within 60s)
+- TLS version hint extraction on packets and TLS version display in flow details.
+
+### Changed
+- UI refactor: extracted hexdump rendering into `ui/hexdump.rs`.
+- UI refactor: extracted overview page builder into `ui/overview.rs`.
+- README expanded with flow analysis and detector examples.
+
+### Fixed
+- Asymmetry labels now use directional `A>B` / `B>A` semantics instead of upload/download wording, avoiding canonical-direction inversion.
+- Chatty-host detector now groups by first observed packet destination (not canonical key destination).
+- TLS version detection now uses ServerHello version selection (including TLS 1.3 supported_versions), avoiding ClientHello legacy-version mislabeling.
+
 ## [0.2.1] - 2026-02-25
 
 ### Added

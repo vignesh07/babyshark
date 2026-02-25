@@ -10,7 +10,6 @@ use hexdump::{
     next_match_and_scroll, prev_match_and_scroll, STREAM_MATCH_HIGHLIGHT_CAP, UI_ONE_SPACE,
     UI_SPACER,
 };
-use overview::{build_overview_rows, OverviewAction};
 use modals::{
     build_explain_lines, build_glossary_lines, build_help_lines, render_explain_modal,
     render_glossary_modal, render_help_modal, render_search_modal,
@@ -19,6 +18,7 @@ use modals::{
 use modals::{
     STREAM_SEARCH_MODAL_HELP, STREAM_SEARCH_STATUS_NO_MATCHES, STREAM_SEARCH_STATUS_TYPE_TO_SEARCH,
 };
+use overview::{build_overview_rows, OverviewAction};
 // stream module referenced via `crate::stream::...`
 use crate::ui_filter::FlowFilter;
 use anyhow::Result;
@@ -32,7 +32,6 @@ use ratatui::layout::{Constraint, Direction, Layout, Margin};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap};
-
 
 use ratatui::Terminal;
 use std::io::{self, Stdout};
@@ -690,7 +689,6 @@ pub fn run_tui(app: &mut App) -> Result<()> {
     res
 }
 
-
 fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) -> Result<()> {
     let mut flow_state = ListState::default();
     if !app.visible_flow_indices.is_empty() {
@@ -1123,11 +1121,11 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             // Asymmetry compact suffix.
                             if let Some(a) = fl.analysis.as_ref() {
                                 match a.asymmetry {
-                                    crate::flow::AsymmetryLabel::DownloadHeavy => {
-                                        spans.push(Span::styled(" DL", Style::default().fg(Color::Cyan)));
+                                    crate::flow::AsymmetryLabel::AtoBHeavy => {
+                                        spans.push(Span::styled(" A>B", Style::default().fg(Color::Cyan)));
                                     }
-                                    crate::flow::AsymmetryLabel::UploadHeavy => {
-                                        spans.push(Span::styled(" UL", Style::default().fg(Color::Magenta)));
+                                    crate::flow::AsymmetryLabel::BtoAHeavy => {
+                                        spans.push(Span::styled(" B>A", Style::default().fg(Color::Magenta)));
                                     }
                                     crate::flow::AsymmetryLabel::Balanced => {}
                                 }
@@ -1381,8 +1379,8 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     // Asymmetry label.
                     if let Some(analysis) = &fl.analysis {
                         let label = match analysis.asymmetry {
-                            crate::flow::AsymmetryLabel::DownloadHeavy => "download-heavy",
-                            crate::flow::AsymmetryLabel::UploadHeavy => "upload-heavy",
+                            crate::flow::AsymmetryLabel::AtoBHeavy => "A->B-heavy",
+                            crate::flow::AsymmetryLabel::BtoAHeavy => "B->A-heavy",
                             crate::flow::AsymmetryLabel::Balanced => "balanced",
                         };
                         out.push(Line::from(vec![
@@ -2170,7 +2168,6 @@ mod tests {
         assert_eq!(app.stream_last_match, Some(123));
     }
 
-
     #[test]
     fn count_stream_matches_is_zero_when_query_empty() {
         let mut app = App::new(
@@ -2232,7 +2229,6 @@ mod tests {
         assert!(STREAM_SEARCH_MODAL_HELP.contains("Shift-Tab"));
     }
 
-
     #[test]
     fn stream_tab_prev_cycles_backward() {
         let mut app = App::new(
@@ -2280,7 +2276,6 @@ mod tests {
         // With no selected flow, applying the search should not disturb the current scroll.
         assert_eq!(app.stream_scroll, 7);
     }
-
 
     #[test]
     fn opening_stream_search_resets_scroll() {
@@ -2360,8 +2355,6 @@ mod tests {
         assert_eq!(app.stream_match_count, 99);
         assert!(matches!(app.view, View::Stream));
     }
-
-
 
     #[test]
     fn tab_prev_is_noop_outside_stream_view() {
