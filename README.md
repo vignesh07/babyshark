@@ -91,6 +91,15 @@ babyshark --help
   - list capture interfaces
   - live capture with optional display filter
   - optional write-to-file while capturing
+- Per-flow analysis:
+  - **Health badges** — colored dot (green/yellow/red) on each flow based on RST, incomplete handshakes, retransmissions
+  - **Asymmetry labels** — DL/UL suffix in flow list + "download-heavy/upload-heavy/balanced" in details
+  - **TCP timing** — handshake RTT, server think time, data transfer duration in the details pane
+  - **TLS version display** — shows negotiated TLS version, flags deprecated versions (≤ TLS 1.1)
+- Weird detectors:
+  - TCP resets, handshake-not-completed, DNS failures, retransmit/OOO hints, high-latency flows
+  - **Deprecated TLS** — flags flows using TLS 1.0 or 1.1
+  - **Chatty hosts** — flags ≥10 flows to the same destination within 60 seconds
 - Notes/export:
   - bookmark flows
   - export markdown report (latest + timestamped copies)
@@ -278,10 +287,12 @@ Tip: Enter applies a subset filter (prefers observed IPs; DNS IPs if available).
 Weird stuff  (Enter show flows, c clear, Esc back)
 
 ❯ 1 High-latency flows (rough)                          flows=42
-  2 TCP reliability hints (retransmits / out-of-order)  flows=16
-  3 TCP resets (RST)                                    flows=11
-  4 Handshake not completed                             flows=0
-  5 DNS failures (NXDOMAIN/SERVFAIL)                    flows=0
+  2 Chatty hosts (burst connections)                    flows=28
+  3 TCP reliability hints (retransmits / out-of-order)  flows=16
+  4 TCP resets (RST)                                    flows=11
+  5 Deprecated TLS versions (≤ 1.1)                     flows=3
+  6 Handshake not completed                             flows=0
+  7 DNS failures (NXDOMAIN/SERVFAIL)                    flows=0
 
 Why it matters
 High-latency flows (rough)
@@ -295,14 +306,21 @@ congestion, or retries. This is a rough heuristic and depends on correct timesta
 ```text
 Flows [LIVE en0] (63.8 pps)  (Enter packets, / filter, t/u toggles, b bookmark, E export, o overview)  subset=domain:chat.openai.com
 
-  1 UDP  510   10.0.0.6:59175 ↔ 203.0.113.123:443
-❯ 2 TCP   32   10.0.0.6:57608 ↔ 198.51.100.42:443
+● 1 UDP  510   10.0.0.6:59175 ↔ 203.0.113.123:443 DL
+❯● 2 TCP   32   10.0.0.6:57608 ↔ 198.51.100.42:443 DL
 
 Details
 TCP 10.0.0.6:57608 ↔ 198.51.100.42:443
 
 A→B: 14 pkts / 1386 bytes
 B→A: 26 pkts / 26307 bytes
+Direction: download-heavy
+
+Handshake RTT: 12.450ms
+Server think:  3.200ms
+Data transfer: 89.100ms
+
+TLS version: TLS 1.2
 
 bookmarks: 1
 ```
