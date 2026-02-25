@@ -27,6 +27,8 @@ pub enum WeirdDetector {
     DnsFailures,
     TcpReliabilityHints,
     HighLatencyFlows,
+    TlsVersionDeprecated,
+    ChattyHosts,
 }
 
 fn row_has_tcp_flag(row: &PacketRow, flag: u16) -> bool {
@@ -207,6 +209,86 @@ pub fn build_weird_summary(rows: &[PacketRow], flows: &FlowIndex) -> WeirdSummar
         });
     }
 
+    // Detector: deprecated TLS versions (≤ TLS 1.1 / 0x0302)
+    {
+        let mut flow_indices: Vec<usize> = Vec::new();
+
+        for (i, fl) in flows.flows.iter().enumerate() {
+            let deprecated = fl.packet_indices.iter().any(|&pi| {
+                rows.get(pi)
+                    .and_then(|r| r.tls_version)
+                    .is_some_and(|v| v <= 0x0302)
+            });
+            if deprecated {
+                flow_indices.push(i);
+            }
+        }
+
+        out.push(WeirdItem {
+            title: "Deprecated TLS versions (≤ 1.1)".to_string(),
+            why: "TLS 1.0 and 1.1 have known vulnerabilities and are deprecated by RFC 8996. Modern browsers and servers should use TLS 1.2 or 1.3.".to_string(),
+            next: "Press Enter to filter, then check the Details pane for the exact TLS version. Upgrade the client or server configuration to TLS 1.2+.".to_string(),
+            flow_indices,
+        });
+    }
+
+    // Detector: chatty hosts (≥10 flows to the same dst IP in any 60s window)
+    {
+        use std::collections::HashMap;
+
+        // Group flows by dst IP, record first-packet timestamp for each.
+        let mut dst_flows: HashMap<std::net::IpAddr, Vec<(usize, chrono::DateTime<chrono::Utc>)>> =
+            HashMap::new();
+
+        for (i, fl) in flows.flows.iter().enumerate() {
+            let first_ts = fl
+                .packet_indices
+                .first()
+                .and_then(|&pi| rows.get(pi))
+                .map(|r| r.ts);
+            if let Some(ts) = first_ts {
+                dst_flows.entry(fl.key.dst).or_default().push((i, ts));
+            }
+        }
+
+        let mut chatty_set: std::collections::HashSet<usize> = std::collections::HashSet::new();
+        const WINDOW_S: i64 = 60;
+        const THRESHOLD: usize = 10;
+
+        for (_dst, mut entries) in dst_flows {
+            if entries.len() < THRESHOLD {
+                continue;
+            }
+            entries.sort_by_key(|e| e.1);
+
+            // Sliding window: for each flow, count how many start within 60s.
+            for start in 0..entries.len() {
+                let t0 = entries[start].1;
+                let mut end = start;
+                while end < entries.len()
+                    && (entries[end].1 - t0).num_seconds() <= WINDOW_S
+                {
+                    end += 1;
+                }
+                if end - start >= THRESHOLD {
+                    for e in &entries[start..end] {
+                        chatty_set.insert(e.0);
+                    }
+                }
+            }
+        }
+
+        let mut flow_indices: Vec<usize> = chatty_set.into_iter().collect();
+        flow_indices.sort_unstable();
+
+        out.push(WeirdItem {
+            title: "Chatty hosts (burst connections)".to_string(),
+            why: "10+ flows to the same destination within 60 seconds can indicate scanning, brute-force attempts, misconfigured retry loops, or chatty microservices.".to_string(),
+            next: "Press Enter to filter, then check Packets to see the pattern. Compare with DNS failures—chatty flows often follow unresolved names.".to_string(),
+            flow_indices,
+        });
+    }
+
     // Sort: most interesting first.
     out.sort_by_key(|it| std::cmp::Reverse(it.flow_indices.len()));
 
@@ -362,6 +444,142 @@ mod tests {
             .unwrap();
         assert_eq!(item.flow_indices.len(), 1);
         assert!(!item.next.trim().is_empty());
+    }
+
+    #[test]
+    fn tls_deprecated_detector_flags_old_versions() {
+        let mk = |idx: usize, ver: Option<u16>| PacketRow {
+            index: idx,
+            ts: chrono::Utc::now(),
+            len: 60,
+            src: Some("10.0.0.2".parse().unwrap()),
+            dst: Some("93.184.216.34".parse().unwrap()),
+            proto: Some(L4Proto::Tcp),
+            src_port: Some(55555),
+            dst_port: Some(443),
+            summary: String::new(),
+            flow: Some(FlowKey {
+                src: "10.0.0.2".parse().unwrap(),
+                dst: "93.184.216.34".parse().unwrap(),
+                src_port: 55555,
+                dst_port: 443,
+                proto: L4Proto::Tcp,
+            }),
+            flow_dir: Some(FlowDir::AtoB),
+            tcp_seq: None,
+            tcp_ack: None,
+            tcp_flags: None,
+            payload: Vec::new(),
+            tcp_retransmission: false,
+            tcp_out_of_order: false,
+            dns_qname: None,
+            dns_rcode: None,
+            http_host: None,
+            tls_sni: None,
+            tls_version: ver,
+        };
+
+        // Flow with TLS 1.0 should be flagged.
+        let rows = vec![mk(0, Some(0x0301))];
+        let flows = FlowIndex::build(&rows);
+        let w = build_weird_summary(&rows, &flows);
+        let item = w.items.iter().find(|it| it.title.contains("Deprecated TLS")).unwrap();
+        assert_eq!(item.flow_indices.len(), 1);
+
+        // Flow with TLS 1.2 should NOT be flagged.
+        let rows = vec![mk(0, Some(0x0303))];
+        let flows = FlowIndex::build(&rows);
+        let w = build_weird_summary(&rows, &flows);
+        let item = w.items.iter().find(|it| it.title.contains("Deprecated TLS")).unwrap();
+        assert_eq!(item.flow_indices.len(), 0);
+    }
+
+    #[test]
+    fn chatty_hosts_detector_flags_bursts() {
+        use chrono::{TimeZone, Utc};
+
+        // 12 flows to the same dst within 10 seconds → should be flagged.
+        let rows: Vec<PacketRow> = (0..12)
+            .map(|i| PacketRow {
+                index: i,
+                ts: Utc.timestamp_opt(1000 + i as i64, 0).unwrap(),
+                len: 60,
+                src: Some("10.0.0.2".parse().unwrap()),
+                dst: Some("93.184.216.34".parse().unwrap()),
+                proto: Some(L4Proto::Tcp),
+                src_port: Some(40000 + i as u16), // different src ports = different flows
+                dst_port: Some(443),
+                summary: String::new(),
+                flow: Some(FlowKey {
+                    src: "10.0.0.2".parse().unwrap(),
+                    dst: "93.184.216.34".parse().unwrap(),
+                    src_port: 40000 + i as u16,
+                    dst_port: 443,
+                    proto: L4Proto::Tcp,
+                }),
+                flow_dir: Some(FlowDir::AtoB),
+                tcp_seq: None,
+                tcp_ack: None,
+                tcp_flags: None,
+                payload: Vec::new(),
+                tcp_retransmission: false,
+                tcp_out_of_order: false,
+                dns_qname: None,
+                dns_rcode: None,
+                http_host: None,
+                tls_sni: None,
+                tls_version: None,
+            })
+            .collect();
+
+        let flows = FlowIndex::build(&rows);
+        let w = build_weird_summary(&rows, &flows);
+        let item = w.items.iter().find(|it| it.title.contains("Chatty")).unwrap();
+        assert_eq!(item.flow_indices.len(), 12);
+    }
+
+    #[test]
+    fn chatty_hosts_detector_ignores_spread_out() {
+        use chrono::{TimeZone, Utc};
+
+        // 5 flows spread over 300 seconds → below threshold.
+        let rows: Vec<PacketRow> = (0..5)
+            .map(|i| PacketRow {
+                index: i,
+                ts: Utc.timestamp_opt(i as i64 * 100, 0).unwrap(),
+                len: 60,
+                src: Some("10.0.0.2".parse().unwrap()),
+                dst: Some("93.184.216.34".parse().unwrap()),
+                proto: Some(L4Proto::Tcp),
+                src_port: Some(40000 + i as u16),
+                dst_port: Some(443),
+                summary: String::new(),
+                flow: Some(FlowKey {
+                    src: "10.0.0.2".parse().unwrap(),
+                    dst: "93.184.216.34".parse().unwrap(),
+                    src_port: 40000 + i as u16,
+                    dst_port: 443,
+                    proto: L4Proto::Tcp,
+                }),
+                flow_dir: Some(FlowDir::AtoB),
+                tcp_seq: None,
+                tcp_ack: None,
+                tcp_flags: None,
+                payload: Vec::new(),
+                tcp_retransmission: false,
+                tcp_out_of_order: false,
+                dns_qname: None,
+                dns_rcode: None,
+                http_host: None,
+                tls_sni: None,
+                tls_version: None,
+            })
+            .collect();
+
+        let flows = FlowIndex::build(&rows);
+        let w = build_weird_summary(&rows, &flows);
+        let item = w.items.iter().find(|it| it.title.contains("Chatty")).unwrap();
+        assert_eq!(item.flow_indices.len(), 0);
     }
 }
 

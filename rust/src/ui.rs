@@ -1089,7 +1089,18 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                 .or_else(|| ip_host.get(&fl.key.src))
                                 .cloned();
 
-                            let mut spans = vec![
+                            // Health badge dot.
+                            let badge = fl.analysis.as_ref().map(|a| match a.health {
+                                crate::flow::HealthBadge::Green  => Span::styled("● ", Style::default().fg(Color::Green)),
+                                crate::flow::HealthBadge::Yellow => Span::styled("● ", Style::default().fg(Color::Yellow)),
+                                crate::flow::HealthBadge::Red    => Span::styled("● ", Style::default().fg(Color::Red)),
+                            });
+
+                            let mut spans = Vec::with_capacity(10);
+                            if let Some(b) = badge {
+                                spans.push(b);
+                            }
+                            spans.extend([
                                 Span::styled(
                                     format!("{:>3} ", row_i + 1),
                                     Style::default().fg(c_muted()),
@@ -1107,7 +1118,20 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                     "{}:{} ↔ {}:{}",
                                     fl.key.src, fl.key.src_port, fl.key.dst, fl.key.dst_port
                                 )),
-                            ];
+                            ]);
+
+                            // Asymmetry compact suffix.
+                            if let Some(a) = fl.analysis.as_ref() {
+                                match a.asymmetry {
+                                    crate::flow::AsymmetryLabel::DownloadHeavy => {
+                                        spans.push(Span::styled(" DL", Style::default().fg(Color::Cyan)));
+                                    }
+                                    crate::flow::AsymmetryLabel::UploadHeavy => {
+                                        spans.push(Span::styled(" UL", Style::default().fg(Color::Magenta)));
+                                    }
+                                    crate::flow::AsymmetryLabel::Balanced => {}
+                                }
+                            }
 
                             if let Some(h) = host {
                                 spans.push(Span::raw(UI_SPACER));
@@ -1352,12 +1376,76 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         Line::from(Span::raw("")),
                         Line::from(Span::styled(a, Style::default().fg(c_muted()))),
                         Line::from(Span::styled(b, Style::default().fg(c_muted()))),
-                        Line::from(Span::raw("")),
-                        Line::from(vec![
-                            Span::styled("bookmarks: ", Style::default().fg(c_muted())),
-                            Span::raw(format!("{bookmarks}")),
-                        ]),
                     ];
+
+                    // Asymmetry label.
+                    if let Some(analysis) = &fl.analysis {
+                        let label = match analysis.asymmetry {
+                            crate::flow::AsymmetryLabel::DownloadHeavy => "download-heavy",
+                            crate::flow::AsymmetryLabel::UploadHeavy => "upload-heavy",
+                            crate::flow::AsymmetryLabel::Balanced => "balanced",
+                        };
+                        out.push(Line::from(vec![
+                            Span::styled("Direction: ", Style::default().fg(c_muted())),
+                            Span::raw(label),
+                        ]));
+                    }
+
+                    // TCP timing.
+                    if let Some(timing) = fl.analysis.as_ref().and_then(|a| a.tcp_timing.as_ref()) {
+                        out.push(Line::from(Span::raw("")));
+                        if let Some(us) = timing.handshake_rtt_us {
+                            out.push(Line::from(vec![
+                                Span::styled("Handshake RTT: ", Style::default().fg(c_muted())),
+                                Span::raw(format!("{:.3}ms", us as f64 / 1000.0)),
+                            ]));
+                        }
+                        if let Some(us) = timing.server_think_us {
+                            out.push(Line::from(vec![
+                                Span::styled("Server think:  ", Style::default().fg(c_muted())),
+                                Span::raw(format!("{:.3}ms", us as f64 / 1000.0)),
+                            ]));
+                        }
+                        if let Some(us) = timing.data_transfer_us {
+                            out.push(Line::from(vec![
+                                Span::styled("Data transfer: ", Style::default().fg(c_muted())),
+                                Span::raw(format!("{:.3}ms", us as f64 / 1000.0)),
+                            ]));
+                        }
+                    }
+
+                    // TLS version (from first packet with tls_version hint).
+                    {
+                        let tls_ver = fl.packet_indices.iter().find_map(|&pi| {
+                            app.rows.get(pi).and_then(|r| r.tls_version)
+                        });
+                        if let Some(ver) = tls_ver {
+                            let label = match ver {
+                                0x0300 => "SSL 3.0 (DEPRECATED)".to_string(),
+                                0x0301 => "TLS 1.0 (DEPRECATED)".to_string(),
+                                0x0302 => "TLS 1.1 (DEPRECATED)".to_string(),
+                                0x0303 => "TLS 1.2".to_string(),
+                                0x0304 => "TLS 1.3".to_string(),
+                                _ => format!("0x{ver:04X}"),
+                            };
+                            let style = if ver <= 0x0302 {
+                                Style::default().fg(Color::Red)
+                            } else {
+                                Style::default().fg(c_text())
+                            };
+                            out.push(Line::from(Span::raw("")));
+                            out.push(Line::from(vec![
+                                Span::styled("TLS version: ", Style::default().fg(c_muted())),
+                                Span::styled(label, style),
+                            ]));
+                        }
+                    }
+
+                    out.push(Line::from(Span::raw("")));
+                    out.push(Line::from(vec![
+                        Span::styled("bookmarks: ", Style::default().fg(c_muted())),
+                        Span::raw(format!("{bookmarks}")),
+                    ]));
 
                     if app.learning_mode {
                         out.push(Line::from(Span::raw("")));
