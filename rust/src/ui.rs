@@ -786,6 +786,9 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                 .constraints([Constraint::Percentage(58), Constraint::Percentage(42)])
                 .split(chunks[1]);
 
+            let mut timeline_ip_host: Option<std::collections::HashMap<std::net::IpAddr, String>> =
+                None;
+
             match app.view {
                 View::Overview => {
                     let rows = build_overview_rows(app);
@@ -1383,6 +1386,10 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     let border_pad = 3usize;
                     let pane_width = body_chunks[0].width as usize;
                     let bar_width = pane_width.saturating_sub(label_width + badge_width + border_pad);
+                    let ip_host: std::collections::HashMap<std::net::IpAddr, String> =
+                        crate::domains::build_ip_hostname_index(&app.rows)
+                            .into_iter()
+                            .collect();
 
                     let tab_label = match app.timeline_tab {
                         TimelineTab::Gantt => "Gantt",
@@ -1395,7 +1402,9 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         bar_width,
                         label_width,
                         app.timeline_selected_row,
+                        &ip_host,
                     );
+                    timeline_ip_host = Some(ip_host);
 
                     let header_count = headers.len();
                     // Update viewport for paging: subtract borders(2) + title(1) + header lines.
@@ -1563,10 +1572,10 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
 
                     // Timeline narrative: plain-English story of what happened.
                     if app.view == View::Timeline {
-                        let ip_host: std::collections::HashMap<std::net::IpAddr, String> =
-                            crate::domains::build_ip_hostname_index(&app.rows).into_iter().collect();
                         out.push(Line::from(Span::raw("")));
-                        out.extend(timeline::build_narrative(fl, &app.rows, &ip_host));
+                        if let Some(ip_host) = timeline_ip_host.as_ref() {
+                            out.extend(timeline::build_narrative(fl, &app.rows, ip_host));
+                        }
                     }
 
                     out

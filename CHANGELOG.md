@@ -44,6 +44,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Timeline range and per-flow first/last timestamps now use min/max packet timestamps (robust to out-of-order capture rows).
 - Details pane now follows the selected Timeline row (instead of stale Flows selection).
 - Scatter renderer packet-count tracking no longer overflows on very dense columns.
+- Timeline narrative direction wording now uses local-aware asymmetry labels, with neutral fallback when local/remote inference is ambiguous.
+- Timeline DNS→TLS pattern callout now requires hostname + time correlation (reduces false positives).
+- Timeline rendering reuses a shared hostname index per frame (avoids duplicate per-frame rebuilds).
 
 ## [0.2.1] - 2026-02-25
 

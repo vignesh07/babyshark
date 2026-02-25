@@ -318,7 +318,7 @@ Timeline: Gantt  (Tab switch, ↑/↓ move, Enter packets, Esc back)
   wikipedia.org (HTTPS) ●  ██████████████████████████
   DNS 10.0.0.1:53      ● ██
 Pattern: 3 connections opened simultaneously — likely a page load
-Pattern: 2 DNS lookups followed by 3 encrypted connections
+Pattern: 2 DNS lookups preceded 3 encrypted connections to matching hosts
 
 Details
 TCP 10.0.0.6:57608 ↔ 198.51.100.42:443
@@ -336,8 +336,8 @@ What happened
 
 - **Gantt** — horizontal bars colored by TCP phase, with hostname labels
 - **Scatter** — per-packet dots colored by direction (you→server, server→you, retransmit)
-- **Patterns** — automatic callouts for simultaneous opens, DNS-before-TLS sequences, retransmission warnings
-- **Narrative** — plain-English "What happened" in the details panel
+- **Patterns** — automatic callouts for simultaneous opens, DNS→TLS hostname/time correlations, retransmission warnings
+- **Narrative** — plain-English "What happened" in the details panel (uses upload/download wording only when local side is inferable)
 
 ### Flows
 

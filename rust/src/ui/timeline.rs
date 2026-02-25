@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::{c_highlight_bg, c_muted, c_text, App, TimelineTab};
 use crate::flow::{FlowStats, HealthBadge};
@@ -628,15 +628,18 @@ pub(super) fn build_narrative(fl: &FlowStats, rows: &[PacketRow], ip_host: &Hash
             }
         }
 
-        if let Some(a) = fl.analysis.as_ref() {
-            match a.asymmetry {
-                crate::flow::AsymmetryLabel::BtoAHeavy => {
+        if let Some(direction) = fl.asymmetry_detail_label() {
+            match direction {
+                "download-heavy" => {
                     steps.push("Mostly downloading (server sent more data)".to_string());
                 }
-                crate::flow::AsymmetryLabel::AtoBHeavy => {
+                "upload-heavy" => {
                     steps.push("Mostly uploading (you sent more data)".to_string());
                 }
-                crate::flow::AsymmetryLabel::Balanced => {}
+                "balanced" => {}
+                other => {
+                    steps.push(format!("Direction is skewed ({other})"));
+                }
             }
         }
 
@@ -705,10 +708,39 @@ pub(super) fn build_narrative(fl: &FlowStats, rows: &[PacketRow], ip_host: &Hash
 
 // ── Pattern detection ───────────────────────────────────────────────────
 
+fn normalize_name(name: &str) -> String {
+    name.trim().trim_end_matches('.').to_ascii_lowercase()
+}
+
+fn host_matches_qname(host: &str, qname: &str) -> bool {
+    let host = normalize_name(host);
+    let qname = normalize_name(qname);
+    if host.is_empty() || qname.is_empty() {
+        return false;
+    }
+    host == qname || host.ends_with(&format!(".{qname}")) || qname.ends_with(&format!(".{host}"))
+}
+
+fn dns_queries_for_flow(fl: &FlowStats, rows: &[PacketRow]) -> Vec<String> {
+    let mut names = Vec::new();
+    for &pi in &fl.packet_indices {
+        let Some(r) = rows.get(pi) else { continue };
+        let Some(qname) = &r.dns_qname else { continue };
+        let q = normalize_name(qname);
+        if !q.is_empty() {
+            names.push(q);
+        }
+    }
+    names.sort();
+    names.dedup();
+    names
+}
+
 /// Detect interesting patterns across all visible flows and return callout lines.
 pub(super) fn detect_patterns(
     app: &App,
     sorted_indices: &[usize],
+    ip_host: &HashMap<std::net::IpAddr, String>,
 ) -> Vec<Line<'static>> {
     let mut out: Vec<Line> = Vec::new();
 
@@ -751,23 +783,80 @@ pub(super) fn detect_patterns(
         ]));
     }
 
-    // Pattern 2: DNS before TLS (show when a DNS flow is quickly followed by a TLS flow to the same host)
-    // (Check for UDP:53 flows that start before TCP:443 flows to resolved IPs)
-    let dns_count = sorted_indices.iter().filter(|&&i| {
-        app.flows.flows.get(i).map(|f| f.key.proto == L4Proto::Udp && f.key.dst_port == 53).unwrap_or(false)
-    }).count();
-    let tls_count = sorted_indices.iter().filter(|&&i| {
-        app.flows.flows.get(i).map(|f| f.key.dst_port == 443).unwrap_or(false)
-    }).count();
+    // Pattern 2: DNS lookup followed by encrypted connection to the same host.
+    let dns_flows: Vec<(usize, DateTime<Utc>, Vec<String>)> = sorted_indices
+        .iter()
+        .filter_map(|&i| {
+            let fl = app.flows.flows.get(i)?;
+            if fl.key.proto != L4Proto::Udp || fl.key.dst_port != 53 {
+                return None;
+            }
+            let ts = fl.first_ts?;
+            let qnames = dns_queries_for_flow(fl, &app.rows);
+            if qnames.is_empty() {
+                return None;
+            }
+            Some((i, ts, qnames))
+        })
+        .collect();
 
-    if dns_count > 0 && tls_count > 0 {
+    let mut matched_dns: HashSet<usize> = HashSet::new();
+    let mut matched_tls = 0usize;
+    let mut total_tls = 0usize;
+    const DNS_TLS_WINDOW_MS: i64 = 30_000;
+
+    for &i in sorted_indices {
+        let Some(fl) = app.flows.flows.get(i) else { continue };
+        if fl.key.proto != L4Proto::Tcp || fl.key.dst_port != 443 {
+            continue;
+        }
+        total_tls += 1;
+        let Some(tls_ts) = fl.first_ts else { continue };
+        let Some(host) = ip_host.get(&fl.key.dst).or_else(|| ip_host.get(&fl.key.src)) else {
+            continue;
+        };
+
+        for (dns_flow_idx, dns_ts, qnames) in &dns_flows {
+            if *dns_ts > tls_ts {
+                continue;
+            }
+            let delta_ms = (tls_ts - *dns_ts).num_milliseconds();
+            if delta_ms > DNS_TLS_WINDOW_MS {
+                continue;
+            }
+            if qnames.iter().any(|q| host_matches_qname(host, q)) {
+                matched_tls += 1;
+                matched_dns.insert(*dns_flow_idx);
+                break;
+            }
+        }
+    }
+
+    if matched_tls > 0 {
         out.push(Line::from(vec![
             Span::styled("Pattern: ", Style::default().fg(Color::Rgb(255, 215, 0)).add_modifier(Modifier::BOLD)),
             Span::styled(
-                format!("{dns_count} DNS lookups followed by {tls_count} encrypted connections — browsers resolve hostnames before connecting"),
+                format!(
+                    "{} DNS lookups preceded {} encrypted connections to matching hosts",
+                    matched_dns.len(),
+                    matched_tls
+                ),
                 Style::default().fg(c_text()),
             ),
         ]));
+    } else {
+        let dns_count = dns_flows.len();
+        if dns_count > 0 && total_tls > 0 {
+            out.push(Line::from(vec![
+                Span::styled("Pattern: ", Style::default().fg(Color::Rgb(255, 215, 0)).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    format!(
+                        "{dns_count} DNS lookups and {total_tls} encrypted connections are present",
+                    ),
+                    Style::default().fg(c_text()),
+                ),
+            ]));
+        }
     }
 
     // Pattern 3: Retransmissions visible
@@ -800,6 +889,7 @@ pub(super) fn build_timeline_items(
     bar_width: usize,
     label_width: usize,
     selected_row: usize,
+    ip_host: &HashMap<std::net::IpAddr, String>,
 ) -> (Vec<Line<'static>>, Vec<Line<'static>>) {
     let Some((capture_start, capture_end)) = capture_time_range(app) else {
         return (
@@ -816,10 +906,6 @@ pub(super) fn build_timeline_items(
         TimelineTab::Gantt => build_gantt_legend(label_width),
         TimelineTab::Scatter => build_scatter_legend(label_width),
     };
-
-    let ip_host = crate::domains::build_ip_hostname_index(&app.rows);
-    // Convert BTreeMap → HashMap for our use
-    let ip_host: HashMap<std::net::IpAddr, String> = ip_host.into_iter().collect();
 
     // Sort visible flows by first_ts
     let sorted_indices = timeline_sorted_indices(app);
@@ -842,7 +928,7 @@ pub(super) fn build_timeline_items(
         .collect();
 
     // Pattern callouts
-    let patterns = detect_patterns(app, &sorted_indices);
+    let patterns = detect_patterns(app, &sorted_indices, ip_host);
 
     let mut headers = vec![legend, axis];
     headers.extend(patterns);
@@ -1232,5 +1318,181 @@ mod tests {
         assert!(text.contains("example.com"), "Narrative should mention hostname");
         assert!(text.contains("50.0ms"), "Narrative should mention RTT");
         assert!(text.contains("Connected"), "Narrative should describe connection");
+    }
+
+    #[test]
+    fn narrative_uses_neutral_direction_when_local_side_is_ambiguous() {
+        use crate::flow::{AsymmetryLabel, DirStats, FlowAnalysis, FlowStats, HealthBadge};
+        use crate::pcap::FlowKey;
+
+        let rows = vec![mk_packet_row(0, 0)];
+        let fl = FlowStats {
+            key: FlowKey {
+                src: "93.184.216.34".parse().unwrap(),
+                dst: "198.51.100.10".parse().unwrap(),
+                src_port: 443,
+                dst_port: 50000,
+                proto: L4Proto::Tcp,
+            },
+            total_packets: 1,
+            total_bytes: 60,
+            a_to_b: DirStats { packets: 1, bytes: 40 },
+            b_to_a: DirStats { packets: 1, bytes: 20 },
+            packet_indices: vec![0],
+            analysis: Some(FlowAnalysis {
+                health: HealthBadge::Green,
+                asymmetry: AsymmetryLabel::AtoBHeavy,
+                tcp_timing: None,
+            }),
+            first_ts: Some(Utc.timestamp_millis_opt(0).unwrap()),
+            last_ts: Some(Utc.timestamp_millis_opt(0).unwrap()),
+        };
+
+        let ip_host = HashMap::new();
+        let text = build_narrative(&fl, &rows, &ip_host)
+            .iter()
+            .map(|l| l.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(text.contains("A->B-heavy"), "Narrative should keep neutral canonical label");
+        assert!(
+            !text.contains("Mostly downloading") && !text.contains("Mostly uploading"),
+            "Narrative should not claim upload/download when side inference is ambiguous",
+        );
+    }
+
+    #[test]
+    fn detect_patterns_dns_tls_requires_matching_hostname() {
+        use crate::flow::{DirStats, FlowStats};
+        use crate::pcap::FlowKey;
+
+        let mut dns_row = mk_packet_row(0, 0);
+        dns_row.proto = Some(L4Proto::Udp);
+        dns_row.src_port = Some(53000);
+        dns_row.dst_port = Some(53);
+        dns_row.dns_qname = Some("unrelated.example".to_string());
+
+        let mut tls_row = mk_packet_row(1, 2_000);
+        tls_row.proto = Some(L4Proto::Tcp);
+        tls_row.src_port = Some(51000);
+        tls_row.dst_port = Some(443);
+        tls_row.dst = Some("93.184.216.34".parse().unwrap());
+
+        let flows = vec![
+            FlowStats {
+                key: FlowKey {
+                    src: "10.0.0.1".parse().unwrap(),
+                    dst: "1.1.1.1".parse().unwrap(),
+                    src_port: 53000,
+                    dst_port: 53,
+                    proto: L4Proto::Udp,
+                },
+                total_packets: 1,
+                total_bytes: 60,
+                a_to_b: DirStats { packets: 1, bytes: 60 },
+                b_to_a: DirStats::default(),
+                packet_indices: vec![0],
+                analysis: None,
+                first_ts: Some(Utc.timestamp_millis_opt(0).unwrap()),
+                last_ts: Some(Utc.timestamp_millis_opt(0).unwrap()),
+            },
+            FlowStats {
+                key: FlowKey {
+                    src: "10.0.0.1".parse().unwrap(),
+                    dst: "93.184.216.34".parse().unwrap(),
+                    src_port: 51000,
+                    dst_port: 443,
+                    proto: L4Proto::Tcp,
+                },
+                total_packets: 1,
+                total_bytes: 120,
+                a_to_b: DirStats { packets: 1, bytes: 120 },
+                b_to_a: DirStats::default(),
+                packet_indices: vec![1],
+                analysis: None,
+                first_ts: Some(Utc.timestamp_millis_opt(2_000).unwrap()),
+                last_ts: Some(Utc.timestamp_millis_opt(2_000).unwrap()),
+            },
+        ];
+
+        let mut app = App::new("/tmp/t.pcap", vec![dns_row, tls_row], crate::flow::FlowIndex { flows });
+        app.visible_flow_indices = vec![0, 1];
+        let sorted = vec![0, 1];
+
+        let mut ip_host = HashMap::new();
+        ip_host.insert("93.184.216.34".parse().unwrap(), "example.com".to_string());
+
+        let lines = detect_patterns(&app, &sorted, &ip_host);
+        let text = lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
+        assert!(
+            !text.contains("preceded"),
+            "Should not claim DNS preceded TLS without hostname match: {text}",
+        );
+    }
+
+    #[test]
+    fn detect_patterns_dns_tls_reports_when_hostname_matches() {
+        use crate::flow::{DirStats, FlowStats};
+        use crate::pcap::FlowKey;
+
+        let mut dns_row = mk_packet_row(0, 0);
+        dns_row.proto = Some(L4Proto::Udp);
+        dns_row.src_port = Some(53000);
+        dns_row.dst_port = Some(53);
+        dns_row.dns_qname = Some("example.com".to_string());
+
+        let mut tls_row = mk_packet_row(1, 2_000);
+        tls_row.proto = Some(L4Proto::Tcp);
+        tls_row.src_port = Some(51000);
+        tls_row.dst_port = Some(443);
+        tls_row.dst = Some("93.184.216.34".parse().unwrap());
+
+        let flows = vec![
+            FlowStats {
+                key: FlowKey {
+                    src: "10.0.0.1".parse().unwrap(),
+                    dst: "1.1.1.1".parse().unwrap(),
+                    src_port: 53000,
+                    dst_port: 53,
+                    proto: L4Proto::Udp,
+                },
+                total_packets: 1,
+                total_bytes: 60,
+                a_to_b: DirStats { packets: 1, bytes: 60 },
+                b_to_a: DirStats::default(),
+                packet_indices: vec![0],
+                analysis: None,
+                first_ts: Some(Utc.timestamp_millis_opt(0).unwrap()),
+                last_ts: Some(Utc.timestamp_millis_opt(0).unwrap()),
+            },
+            FlowStats {
+                key: FlowKey {
+                    src: "10.0.0.1".parse().unwrap(),
+                    dst: "93.184.216.34".parse().unwrap(),
+                    src_port: 51000,
+                    dst_port: 443,
+                    proto: L4Proto::Tcp,
+                },
+                total_packets: 1,
+                total_bytes: 120,
+                a_to_b: DirStats { packets: 1, bytes: 120 },
+                b_to_a: DirStats::default(),
+                packet_indices: vec![1],
+                analysis: None,
+                first_ts: Some(Utc.timestamp_millis_opt(2_000).unwrap()),
+                last_ts: Some(Utc.timestamp_millis_opt(2_000).unwrap()),
+            },
+        ];
+
+        let mut app = App::new("/tmp/t.pcap", vec![dns_row, tls_row], crate::flow::FlowIndex { flows });
+        app.visible_flow_indices = vec![0, 1];
+        let sorted = vec![0, 1];
+
+        let mut ip_host = HashMap::new();
+        ip_host.insert("93.184.216.34".parse().unwrap(), "example.com".to_string());
+
+        let lines = detect_patterns(&app, &sorted, &ip_host);
+        let text = lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
+        assert!(text.contains("preceded"), "Expected DNS->TLS pattern callout, got: {text}");
     }
 }
