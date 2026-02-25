@@ -31,6 +31,7 @@ pub fn write_two_tcp_packets(mut w: impl std::io::Write) {
 }
 
 /// Writes 2 A->B TCP segments out-of-order that should reassemble to "HELLO".
+#[allow(dead_code)]
 pub fn write_out_of_order_tcp(mut w: impl std::io::Write) {
     let mut writer = PcapWriter::new(&mut w).unwrap();
 

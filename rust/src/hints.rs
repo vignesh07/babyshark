@@ -266,7 +266,7 @@ mod tests {
     fn dns_rcode_parses_nxdomain() {
         // Minimal DNS response with rcode=3 (NXDOMAIN) and qdcount=1.
         // flags = 0x8183: response + recursion available + NXDOMAIN
-        let mut p: Vec<u8> = vec![
+        let p: Vec<u8> = vec![
             0x00, 0x01, // id
             0x81, 0x83, // flags
             0x00, 0x01, // qdcount
