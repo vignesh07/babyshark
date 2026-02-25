@@ -123,6 +123,14 @@ fn col_phase(col_ts: DateTime<Utc>, phases: &PhaseTimestamps, is_tcp: bool) -> P
         }
     }
 
+    // Fallback: no payload captured but handshake completed —
+    // treat everything after SYN-ACK as Data (not Handshake).
+    if let Some(syn_ack) = phases.syn_ack_ts {
+        if col_ts > syn_ack {
+            return Phase::Data;
+        }
+    }
+
     // Handshake: SYN..SYN-ACK..ACK
     Phase::Handshake
 }
@@ -1057,6 +1065,29 @@ mod tests {
         assert_eq!(col_phase(Utc.timestamp_millis_opt(100).unwrap(), &phases, true), Phase::Tls);
         // After first_data = data
         assert_eq!(col_phase(Utc.timestamp_millis_opt(300).unwrap(), &phases, true), Phase::Data);
+    }
+
+    #[test]
+    fn phase_coloring_no_payload_falls_back_to_data() {
+        // Simulates a capture where payload bytes aren't stored (snap length).
+        // first_data_ts is None, but handshake completed — post-SYN-ACK should be Data.
+        let phases = PhaseTimestamps {
+            syn_ts: Some(Utc.timestamp_millis_opt(0).unwrap()),
+            syn_ack_ts: Some(Utc.timestamp_millis_opt(50).unwrap()),
+            first_data_ts: None,
+            fin_ts: Some(Utc.timestamp_millis_opt(600).unwrap()),
+            has_tls: false,
+        };
+
+        // Before SYN-ACK = handshake
+        assert_eq!(col_phase(Utc.timestamp_millis_opt(25).unwrap(), &phases, true), Phase::Handshake);
+        // At SYN-ACK = still handshake
+        assert_eq!(col_phase(Utc.timestamp_millis_opt(50).unwrap(), &phases, true), Phase::Handshake);
+        // After SYN-ACK = data (NOT handshake)
+        assert_eq!(col_phase(Utc.timestamp_millis_opt(100).unwrap(), &phases, true), Phase::Data);
+        assert_eq!(col_phase(Utc.timestamp_millis_opt(400).unwrap(), &phases, true), Phase::Data);
+        // At FIN = close
+        assert_eq!(col_phase(Utc.timestamp_millis_opt(600).unwrap(), &phases, true), Phase::Close);
     }
 
     #[test]
