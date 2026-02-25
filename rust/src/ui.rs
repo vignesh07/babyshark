@@ -1785,6 +1785,12 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         app.view = View::Domains;
                         app.show_onboarding = false;
                     }
+                    KeyCode::Char('G') => {
+                        app.view = View::Timeline;
+                        app.timeline_selected_row = 0;
+                        app.timeline_scroll_row = 0;
+                        app.show_onboarding = false;
+                    }
                     KeyCode::Char('f') => {
                         // lower-case f is "follow stream" in Packets; elsewhere treat as Flows shortcut.
                         if app.view == View::Packets {
@@ -2010,6 +2016,17 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                     }
                                 }
                             }
+                        } else if app.view == View::Timeline {
+                            // Map timeline_selected_row to the actual flow index
+                            let sorted = timeline::timeline_sorted_indices(app);
+                            if let Some(&flow_idx) = sorted.get(app.timeline_selected_row) {
+                                // Find this flow in visible_flow_indices to set selected_row
+                                if let Some(pos) = app.visible_flow_indices.iter().position(|&i| i == flow_idx) {
+                                    app.selected_row = pos;
+                                    flow_state.select(Some(app.selected_row));
+                                    app.open_packets();
+                                }
+                            }
                         }
                     }
                     KeyCode::Char(c) if c.is_ascii_digit() => {
@@ -2028,11 +2045,21 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     KeyCode::Tab => {
                         if app.view == View::Stream {
                             app.tab_next();
+                        } else if app.view == View::Timeline {
+                            app.timeline_tab = match app.timeline_tab {
+                                TimelineTab::Gantt => TimelineTab::Scatter,
+                                TimelineTab::Scatter => TimelineTab::Gantt,
+                            };
                         }
                     }
                     KeyCode::BackTab => {
                         if app.view == View::Stream {
                             app.tab_prev();
+                        } else if app.view == View::Timeline {
+                            app.timeline_tab = match app.timeline_tab {
+                                TimelineTab::Gantt => TimelineTab::Scatter,
+                                TimelineTab::Scatter => TimelineTab::Gantt,
+                            };
                         }
                     }
                     KeyCode::PageDown => {
@@ -2050,6 +2077,14 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                     }
                                 }
                             }
+                        } else if app.view == View::Timeline {
+                            let sorted = timeline::timeline_sorted_indices(app);
+                            if !sorted.is_empty() {
+                                let vp = app.timeline_viewport_rows.max(1);
+                                let step = vp.saturating_sub(1).max(1);
+                                app.timeline_selected_row =
+                                    (app.timeline_selected_row + step).min(sorted.len() - 1);
+                            }
                         }
                     }
                     KeyCode::PageUp => {
@@ -2061,6 +2096,11 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             if app.packets_selected_row < app.packets_scroll_row {
                                 app.packets_scroll_row = app.packets_selected_row;
                             }
+                        } else if app.view == View::Timeline {
+                            let vp = app.timeline_viewport_rows.max(1);
+                            let step = vp.saturating_sub(1).max(1);
+                            app.timeline_selected_row =
+                                app.timeline_selected_row.saturating_sub(step);
                         }
                     }
                     KeyCode::Down | KeyCode::Char('j') => match app.view {
