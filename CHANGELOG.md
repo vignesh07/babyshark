@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-02-23
+
 ### Added
 - Interactive launcher when running `babyshark` with no args (choose Live capture vs Open PCAP).
 - Lowercase navigation aliases (`d` Domains, `w` Weird, `f` Flows outside Packets).
@@ -47,5 +49,6 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Basic “weird” detectors (e.g., TCP resets, handshake not completed, latency-ish, reliability hints).
 - Export/reporting from Flows (`E`).
 
-[Unreleased]: https://github.com/vignesh07/babyshark/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/vignesh07/babyshark/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/vignesh07/babyshark/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/vignesh07/babyshark/releases/tag/v0.1.0
