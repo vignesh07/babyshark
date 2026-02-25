@@ -7,7 +7,7 @@ Babyshark is a PCAP TUI that helps you answer:
 - What looks broken/weird?
 - What should I select next?
 
-**Status:** v0.2.1 (alpha).
+**Status:** v0.3.0 (alpha).
 - Offline `.pcap` / `.pcapng` viewing works without Wireshark
 - Live capture requires `tshark` (Wireshark CLI)
 

@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-02-25
+
 ### Added
 - Per-flow analysis in Flows/Details:
   - health badge (green/yellow/red)
@@ -18,7 +20,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Timeline educational features:
   - Hostname labels instead of raw IPs (with HTTPS/HTTP/DNS port hints)
   - Color legend explaining what each phase/dot color means
-  - Pattern callouts (simultaneous opens, DNS-before-TLS, retransmission warnings)
+  - Pattern callouts (simultaneous opens, DNS→TLS correlations, retransmission warnings)
   - Plain-English "What happened" narrative in details panel
 - Timeline keyboard controls and drilldown:
   - `Tab`/`Shift-Tab` switch Gantt/Scatter
@@ -47,6 +49,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Timeline narrative direction wording now uses local-aware asymmetry labels, with neutral fallback when local/remote inference is ambiguous.
 - Timeline DNS→TLS pattern callout now requires hostname + time correlation (reduces false positives).
 - Timeline rendering reuses a shared hostname index per frame (avoids duplicate per-frame rebuilds).
+- Selected timeline rows now preserve Gantt phase colors and Scatter direction colors while highlighted.
+- Gantt phase classification now marks data-carrying packets as data phase instead of handshake phase.
 
 ## [0.2.1] - 2026-02-25
 
@@ -104,7 +108,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Basic “weird” detectors (e.g., TCP resets, handshake not completed, latency-ish, reliability hints).
 - Export/reporting from Flows (`E`).
 
-[Unreleased]: https://github.com/vignesh07/babyshark/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/vignesh07/babyshark/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/vignesh07/babyshark/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/vignesh07/babyshark/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/vignesh07/babyshark/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/vignesh07/babyshark/releases/tag/v0.1.0
