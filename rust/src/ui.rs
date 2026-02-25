@@ -1459,9 +1459,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         )
                         .highlight_style(
                             Style::default()
-                                .bg(c_highlight_bg())
-                                .fg(c_text())
-                                .add_modifier(Modifier::BOLD),
+                                .bg(c_highlight_bg()),
                         )
                         .highlight_symbol("❯ ");
 
