@@ -77,7 +77,7 @@ pub(super) fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
             label: Line::from(vec![
                 Span::styled("• ", Style::default().fg(c_muted())),
                 Span::styled(
-                    "Press G",
+                    "Press T",
                     Style::default().fg(c_accent()).add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(" for Timeline (Gantt + Scatter)", Style::default().fg(c_text())),
@@ -256,7 +256,7 @@ pub(super) fn build_overview_rows(app: &App) -> Vec<OverviewRow> {
         label: Line::from(vec![
             Span::styled("• ", Style::default().fg(c_muted())),
             Span::styled("Timeline (Gantt + Scatter)", Style::default().fg(c_accent())),
-            Span::styled("  (press G)", Style::default().fg(c_muted())),
+            Span::styled("  (press T)", Style::default().fg(c_muted())),
         ]),
         action: None,
     });

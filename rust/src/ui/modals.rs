@@ -245,7 +245,7 @@ pub(super) fn build_help_lines() -> Vec<Line<'static>> {
             Span::styled("  (raw)", Style::default().fg(c_muted())),
         ]),
         Line::from(vec![
-            Span::styled("G ", Style::default().fg(Color::Green)),
+            Span::styled("T ", Style::default().fg(Color::Green)),
             Span::styled("Timeline", Style::default().fg(c_text())),
             Span::styled("  (Gantt + Scatter)", Style::default().fg(c_muted())),
         ]),

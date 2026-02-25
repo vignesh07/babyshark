@@ -1790,7 +1790,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         app.view = View::Domains;
                         app.show_onboarding = false;
                     }
-                    KeyCode::Char('G') => {
+                    KeyCode::Char('T') => {
                         app.view = View::Timeline;
                         app.timeline_selected_row = 0;
                         app.timeline_scroll_row = 0;
