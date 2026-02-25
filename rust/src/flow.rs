@@ -192,18 +192,24 @@ impl FlowIndex {
 
         let mut flows: Vec<FlowStats> = map.into_values().collect();
 
-        // Derive first/last timestamps from packet_indices (which are in row order = time order).
+        // Derive first/last timestamps from packet timestamps.
+        // Use min/max so timeline data stays correct even if row order is not strictly time-sorted.
         for fl in flows.iter_mut() {
-            if let Some(&first) = fl.packet_indices.first() {
-                if let Some(r) = rows.get(first) {
-                    fl.first_ts = Some(r.ts);
-                }
+            let mut min_ts: Option<chrono::DateTime<chrono::Utc>> = None;
+            let mut max_ts: Option<chrono::DateTime<chrono::Utc>> = None;
+            for &pi in &fl.packet_indices {
+                let Some(r) = rows.get(pi) else { continue };
+                min_ts = Some(match min_ts {
+                    Some(ts) => ts.min(r.ts),
+                    None => r.ts,
+                });
+                max_ts = Some(match max_ts {
+                    Some(ts) => ts.max(r.ts),
+                    None => r.ts,
+                });
             }
-            if let Some(&last) = fl.packet_indices.last() {
-                if let Some(r) = rows.get(last) {
-                    fl.last_ts = Some(r.ts);
-                }
-            }
+            fl.first_ts = min_ts;
+            fl.last_ts = max_ts;
         }
         // deterministic ordering: by total_bytes desc, then key
         flows.sort_by(|a, b| {
@@ -650,5 +656,18 @@ mod tests {
         let fl = &flows.flows[0];
         assert_eq!(fl.first_ts, fl.last_ts);
         assert!(fl.first_ts.is_some());
+    }
+
+    #[test]
+    fn first_last_ts_use_min_max_for_out_of_order_rows() {
+        let rows = vec![
+            tcp_row(0, 500, 60, 1111, 80, TCP_FLAG_SYN, 0, false),
+            tcp_row(1, 100, 60, 1111, 80, TCP_FLAG_SYN | TCP_FLAG_ACK, 0, false),
+            tcp_row(2, 300, 60, 1111, 80, TCP_FLAG_ACK, 10, false),
+        ];
+        let flows = FlowIndex::build(&rows);
+        let fl = &flows.flows[0];
+        assert_eq!(fl.first_ts, Some(Utc.timestamp_millis_opt(100).unwrap()));
+        assert_eq!(fl.last_ts, Some(Utc.timestamp_millis_opt(500).unwrap()));
     }
 }

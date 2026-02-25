@@ -277,6 +277,11 @@ impl App {
     }
 
     fn selected_flow(&self) -> Option<&FlowStats> {
+        if self.view == View::Timeline {
+            let sorted = timeline::timeline_sorted_indices(self);
+            let flow_i = *sorted.get(self.timeline_selected_row)?;
+            return self.flows.flows.get(flow_i);
+        }
         let i = *self.visible_flow_indices.get(self.selected_row)?;
         self.flows.flows.get(i)
     }
@@ -2289,6 +2294,63 @@ mod tests {
         assert_eq!(App::compute_live_drop(10, 10), 0);
         assert_eq!(App::compute_live_drop(9, 10), 0);
         assert_eq!(App::compute_live_drop(11, 10), 1);
+    }
+
+    #[test]
+    fn selected_flow_uses_timeline_selection_when_in_timeline_view() {
+        use crate::flow::{DirStats, FlowStats};
+        use crate::pcap::{FlowKey, L4Proto};
+        use chrono::{TimeZone, Utc};
+
+        let later_flow = FlowStats {
+            key: FlowKey {
+                src: "10.0.0.1".parse().unwrap(),
+                dst: "10.0.0.2".parse().unwrap(),
+                src_port: 1111,
+                dst_port: 80,
+                proto: L4Proto::Tcp,
+            },
+            total_packets: 2,
+            total_bytes: 100,
+            a_to_b: DirStats { packets: 1, bytes: 50 },
+            b_to_a: DirStats { packets: 1, bytes: 50 },
+            packet_indices: vec![],
+            analysis: None,
+            first_ts: Some(Utc.timestamp_millis_opt(300).unwrap()),
+            last_ts: Some(Utc.timestamp_millis_opt(400).unwrap()),
+        };
+        let earlier_flow = FlowStats {
+            key: FlowKey {
+                src: "10.0.0.3".parse().unwrap(),
+                dst: "10.0.0.4".parse().unwrap(),
+                src_port: 2222,
+                dst_port: 443,
+                proto: L4Proto::Tcp,
+            },
+            total_packets: 2,
+            total_bytes: 100,
+            a_to_b: DirStats { packets: 1, bytes: 50 },
+            b_to_a: DirStats { packets: 1, bytes: 50 },
+            packet_indices: vec![],
+            analysis: None,
+            first_ts: Some(Utc.timestamp_millis_opt(100).unwrap()),
+            last_ts: Some(Utc.timestamp_millis_opt(200).unwrap()),
+        };
+
+        let mut app = App::new(
+            "/tmp/nope.pcap",
+            Vec::new(),
+            FlowIndex {
+                flows: vec![later_flow, earlier_flow],
+            },
+        );
+        app.visible_flow_indices = vec![0, 1];
+        app.selected_row = 0;
+        app.view = View::Timeline;
+        app.timeline_selected_row = 0;
+
+        let selected = app.selected_flow().expect("timeline-selected flow");
+        assert_eq!(selected.key.src_port, 2222);
     }
 
     #[test]

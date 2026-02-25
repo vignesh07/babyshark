@@ -12,10 +12,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   - health badge (green/yellow/red)
   - directional asymmetry label
   - TCP timing metrics (handshake RTT, server think, transfer duration)
+- Timeline view (`G`) with two sub-tabs:
+  - Gantt (flow duration bars)
+  - Scatter (per-packet direction/retransmit markers)
+- Timeline keyboard controls and drilldown:
+  - `Tab`/`Shift-Tab` switch Gantt/Scatter
+  - `PgUp`/`PgDn` paging
+  - `Enter` to open Packets for selected timeline flow
+- Timeline navigation hints in Overview onboarding and Help modal.
 - New weird detectors:
   - deprecated TLS versions (<= 1.1)
   - chatty hosts bursts (>= 10 flows to a destination within 60s)
 - TLS version hint extraction on packets and TLS version display in flow details.
+- `FlowStats` now stores per-flow `first_ts`/`last_ts` for timeline rendering.
 
 ### Changed
 - UI refactor: extracted hexdump rendering into `ui/hexdump.rs`.
@@ -26,6 +35,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Asymmetry labels now use beginner-friendly `DL/UL` when local side can be inferred, with safe `A>B/B>A` fallback when ambiguous (avoids canonical-direction inversion).
 - Chatty-host detector now groups by first observed packet destination (not canonical key destination).
 - TLS version detection now uses ServerHello version selection (including TLS 1.3 supported_versions), avoiding ClientHello legacy-version mislabeling.
+- Timeline row label truncation is now UTF-8 safe (prevents panic around multibyte characters like `↔`).
+- Timeline range and per-flow first/last timestamps now use min/max packet timestamps (robust to out-of-order capture rows).
+- Details pane now follows the selected Timeline row (instead of stale Flows selection).
+- Scatter renderer packet-count tracking no longer overflows on very dense columns.
 
 ## [0.2.1] - 2026-02-25
 

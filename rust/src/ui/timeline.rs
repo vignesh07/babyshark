@@ -17,15 +17,26 @@ fn ts_to_col(ts: DateTime<Utc>, start: DateTime<Utc>, end: DateTime<Utc>, cols: 
     col.min(cols.saturating_sub(1))
 }
 
-/// Returns (first_ts, last_ts) from the capture's first/last rows.
-/// Returns None if capture has fewer than 2 rows or zero duration.
+/// Returns (start_ts, end_ts) using min/max packet timestamps in the capture.
+/// Returns None if timestamps are missing or capture duration is zero.
 pub(super) fn capture_time_range(app: &App) -> Option<(DateTime<Utc>, DateTime<Utc>)> {
-    if app.rows.len() < 2 {
-        return None;
+    let mut min_ts: Option<DateTime<Utc>> = None;
+    let mut max_ts: Option<DateTime<Utc>> = None;
+
+    for row in &app.rows {
+        min_ts = Some(match min_ts {
+            Some(ts) => ts.min(row.ts),
+            None => row.ts,
+        });
+        max_ts = Some(match max_ts {
+            Some(ts) => ts.max(row.ts),
+            None => row.ts,
+        });
     }
-    let first = app.rows.first()?.ts;
-    let last = app.rows.last()?.ts;
-    if first >= last {
+
+    let first = min_ts?;
+    let last = max_ts?;
+    if first == last {
         return None;
     }
     Some((first, last))
@@ -107,10 +118,15 @@ fn health_badge_span(fl: &FlowStats) -> Span<'static> {
 
 fn truncated_label(fl: &FlowStats, width: usize) -> String {
     let full = fl.label();
-    if full.len() <= width {
+    let full_chars = full.chars().count();
+    if full_chars <= width {
         format!("{:<width$}", full, width = width)
+    } else if width == 0 {
+        String::new()
+    } else if width == 1 {
+        "…".to_string()
     } else {
-        let mut s = full[..width.saturating_sub(1)].to_string();
+        let mut s: String = full.chars().take(width - 1).collect();
         s.push('…');
         s
     }
@@ -198,12 +214,12 @@ pub(super) fn build_scatter_row(
     // For each column, track what kind of packet(s) land there.
     // 0 = empty, 1 = AtoB, 2 = BtoA, 3 = retransmit/OOO, 4 = collision (multiple)
     let mut grid: Vec<u8> = vec![0; bar_width];
-    let mut counts: Vec<u16> = vec![0; bar_width];
+    let mut counts: Vec<usize> = vec![0; bar_width];
 
     for &pi in &fl.packet_indices {
         let Some(r) = rows.get(pi) else { continue };
         let col = ts_to_col(r.ts, capture_start, capture_end, bar_width);
-        counts[col] += 1;
+        counts[col] = counts[col].saturating_add(1);
 
         if r.tcp_retransmission || r.tcp_out_of_order {
             grid[col] = 3; // retransmit takes priority color
@@ -341,6 +357,34 @@ pub(super) fn timeline_sorted_indices(app: &App) -> Vec<usize> {
 mod tests {
     use super::*;
     use chrono::TimeZone;
+    use crate::pcap::{FlowDir, L4Proto, PacketRow};
+
+    fn mk_packet_row(index: usize, ts_ms: i64) -> PacketRow {
+        PacketRow {
+            index,
+            ts: Utc.timestamp_millis_opt(ts_ms).unwrap(),
+            len: 60,
+            src: Some("10.0.0.1".parse().unwrap()),
+            dst: Some("10.0.0.2".parse().unwrap()),
+            proto: Some(L4Proto::Tcp),
+            src_port: Some(1234),
+            dst_port: Some(80),
+            summary: String::new(),
+            flow: None,
+            flow_dir: Some(FlowDir::AtoB),
+            tcp_seq: None,
+            tcp_ack: None,
+            tcp_flags: None,
+            payload: Vec::new(),
+            tcp_retransmission: false,
+            tcp_out_of_order: false,
+            dns_qname: None,
+            dns_rcode: None,
+            http_host: None,
+            tls_sni: None,
+            tls_version: None,
+        }
+    }
 
     #[test]
     fn ts_to_col_boundaries() {
@@ -373,6 +417,19 @@ mod tests {
     fn capture_time_range_returns_none_for_empty() {
         let app = App::new("/tmp/t.pcap", Vec::new(), crate::flow::FlowIndex::default());
         assert!(capture_time_range(&app).is_none());
+    }
+
+    #[test]
+    fn capture_time_range_uses_min_max_for_out_of_order_rows() {
+        let rows = vec![
+            mk_packet_row(0, 500),
+            mk_packet_row(1, 100),
+            mk_packet_row(2, 300),
+        ];
+        let app = App::new("/tmp/t.pcap", rows, crate::flow::FlowIndex::default());
+        let (start, end) = capture_time_range(&app).expect("capture range should exist");
+        assert_eq!(start, Utc.timestamp_millis_opt(100).unwrap());
+        assert_eq!(end, Utc.timestamp_millis_opt(500).unwrap());
     }
 
     #[test]
@@ -521,5 +578,71 @@ mod tests {
         let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
         let dot_count = text.chars().filter(|&c| c == '●').count();
         assert!(dot_count >= 2, "Scatter row should have at least 2 markers, got {dot_count}");
+    }
+
+    #[test]
+    fn truncated_label_handles_utf8_boundaries() {
+        use crate::flow::{DirStats, FlowStats};
+        use crate::pcap::{FlowKey, L4Proto};
+
+        let fl = FlowStats {
+            key: FlowKey {
+                src: "10.0.0.1".parse().unwrap(),
+                dst: "10.0.0.2".parse().unwrap(),
+                src_port: 1234,
+                dst_port: 80,
+                proto: L4Proto::Tcp,
+            },
+            total_packets: 2,
+            total_bytes: 100,
+            a_to_b: DirStats { packets: 1, bytes: 50 },
+            b_to_a: DirStats { packets: 1, bytes: 50 },
+            packet_indices: vec![],
+            analysis: None,
+            first_ts: Some(Utc.timestamp_millis_opt(200).unwrap()),
+            last_ts: Some(Utc.timestamp_millis_opt(800).unwrap()),
+        };
+
+        let out = truncated_label(&fl, 20);
+        assert_eq!(out.chars().count(), 20);
+        assert!(out.ends_with('…'));
+    }
+
+    #[test]
+    fn scatter_counting_does_not_overflow_for_dense_columns() {
+        use crate::flow::{DirStats, FlowStats};
+        use crate::pcap::{FlowKey, L4Proto};
+
+        let start = Utc.timestamp_millis_opt(0).unwrap();
+        let end = Utc.timestamp_millis_opt(1000).unwrap();
+        let rows = vec![mk_packet_row(0, 100)];
+
+        let fl = FlowStats {
+            key: FlowKey {
+                src: "10.0.0.1".parse().unwrap(),
+                dst: "10.0.0.2".parse().unwrap(),
+                src_port: 1234,
+                dst_port: 80,
+                proto: L4Proto::Tcp,
+            },
+            total_packets: 70_000,
+            total_bytes: 4_200_000,
+            a_to_b: DirStats {
+                packets: 70_000,
+                bytes: 4_200_000,
+            },
+            b_to_a: DirStats::default(),
+            packet_indices: vec![0; 70_000],
+            analysis: None,
+            first_ts: Some(Utc.timestamp_millis_opt(100).unwrap()),
+            last_ts: Some(Utc.timestamp_millis_opt(100).unwrap()),
+        };
+
+        let line = build_scatter_row(&fl, &rows, start, end, 20, 18, false);
+        let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+        assert!(
+            text.contains('●') || text.contains('█'),
+            "Dense scatter row should still render markers",
+        );
     }
 }
