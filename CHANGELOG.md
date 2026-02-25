@@ -23,7 +23,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - README expanded with flow analysis and detector examples.
 
 ### Fixed
-- Asymmetry labels now use directional `A>B` / `B>A` semantics instead of upload/download wording, avoiding canonical-direction inversion.
+- Asymmetry labels now use beginner-friendly `DL/UL` when local side can be inferred, with safe `A>B/B>A` fallback when ambiguous (avoids canonical-direction inversion).
 - Chatty-host detector now groups by first observed packet destination (not canonical key destination).
 - TLS version detection now uses ServerHello version selection (including TLS 1.3 supported_versions), avoiding ClientHello legacy-version mislabeling.
 

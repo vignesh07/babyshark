@@ -91,6 +91,67 @@ impl FlowStats {
             self.key.src, self.key.src_port, self.key.dst, self.key.dst_port
         )
     }
+
+    pub fn asymmetry_compact_suffix(&self) -> Option<&'static str> {
+        let analysis = self.analysis.as_ref()?;
+        match analysis.asymmetry {
+            AsymmetryLabel::Balanced => None,
+            AsymmetryLabel::AtoBHeavy => Some(match infer_local_side(self.key.src, self.key.dst) {
+                Some(LocalSide::A) => "UL",
+                Some(LocalSide::B) => "DL",
+                None => "A>B",
+            }),
+            AsymmetryLabel::BtoAHeavy => Some(match infer_local_side(self.key.src, self.key.dst) {
+                Some(LocalSide::A) => "DL",
+                Some(LocalSide::B) => "UL",
+                None => "B>A",
+            }),
+        }
+    }
+
+    pub fn asymmetry_detail_label(&self) -> Option<&'static str> {
+        let analysis = self.analysis.as_ref()?;
+        Some(match analysis.asymmetry {
+            AsymmetryLabel::Balanced => "balanced",
+            AsymmetryLabel::AtoBHeavy => match infer_local_side(self.key.src, self.key.dst) {
+                Some(LocalSide::A) => "upload-heavy",
+                Some(LocalSide::B) => "download-heavy",
+                None => "A->B-heavy",
+            },
+            AsymmetryLabel::BtoAHeavy => match infer_local_side(self.key.src, self.key.dst) {
+                Some(LocalSide::A) => "download-heavy",
+                Some(LocalSide::B) => "upload-heavy",
+                None => "B->A-heavy",
+            },
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LocalSide {
+    A,
+    B,
+}
+
+fn infer_local_side(a: IpAddr, b: IpAddr) -> Option<LocalSide> {
+    let a_local = is_likely_local_ip(a);
+    let b_local = is_likely_local_ip(b);
+    match (a_local, b_local) {
+        (true, false) => Some(LocalSide::A),
+        (false, true) => Some(LocalSide::B),
+        _ => None,
+    }
+}
+
+fn is_likely_local_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            let o = v4.octets();
+            let is_cgnat = o[0] == 100 && (64..=127).contains(&o[1]);
+            v4.is_private() || v4.is_loopback() || v4.is_link_local() || is_cgnat
+        }
+        IpAddr::V6(v6) => v6.is_unique_local() || v6.is_loopback() || v6.is_unicast_link_local(),
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -438,6 +499,52 @@ mod tests {
             bytes: 500,
         };
         assert_eq!(compute_asymmetry(&fl), AsymmetryLabel::Balanced);
+    }
+
+    #[test]
+    fn asymmetry_labels_use_dl_ul_when_local_side_is_inferred() {
+        let mut fl = FlowStats::default();
+        fl.key = FlowKey {
+            src: "10.0.0.2".parse().unwrap(),      // local
+            dst: "93.184.216.34".parse().unwrap(), // remote
+            src_port: 50000,
+            dst_port: 443,
+            proto: L4Proto::Tcp,
+        };
+        fl.analysis = Some(FlowAnalysis {
+            health: HealthBadge::Green,
+            asymmetry: AsymmetryLabel::AtoBHeavy,
+            tcp_timing: None,
+        });
+        assert_eq!(fl.asymmetry_compact_suffix(), Some("UL"));
+        assert_eq!(fl.asymmetry_detail_label(), Some("upload-heavy"));
+
+        fl.analysis = Some(FlowAnalysis {
+            health: HealthBadge::Green,
+            asymmetry: AsymmetryLabel::BtoAHeavy,
+            tcp_timing: None,
+        });
+        assert_eq!(fl.asymmetry_compact_suffix(), Some("DL"));
+        assert_eq!(fl.asymmetry_detail_label(), Some("download-heavy"));
+    }
+
+    #[test]
+    fn asymmetry_labels_fallback_to_a_b_when_local_side_ambiguous() {
+        let mut fl = FlowStats::default();
+        fl.key = FlowKey {
+            src: "93.184.216.34".parse().unwrap(),
+            dst: "198.51.100.42".parse().unwrap(),
+            src_port: 443,
+            dst_port: 50000,
+            proto: L4Proto::Tcp,
+        };
+        fl.analysis = Some(FlowAnalysis {
+            health: HealthBadge::Green,
+            asymmetry: AsymmetryLabel::AtoBHeavy,
+            tcp_timing: None,
+        });
+        assert_eq!(fl.asymmetry_compact_suffix(), Some("A>B"));
+        assert_eq!(fl.asymmetry_detail_label(), Some("A->B-heavy"));
     }
 
     #[test]

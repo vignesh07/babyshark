@@ -1120,14 +1120,13 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
 
                             // Asymmetry compact suffix.
                             if let Some(a) = fl.analysis.as_ref() {
-                                match a.asymmetry {
-                                    crate::flow::AsymmetryLabel::AtoBHeavy => {
-                                        spans.push(Span::styled(" A>B", Style::default().fg(Color::Cyan)));
-                                    }
-                                    crate::flow::AsymmetryLabel::BtoAHeavy => {
-                                        spans.push(Span::styled(" B>A", Style::default().fg(Color::Magenta)));
-                                    }
-                                    crate::flow::AsymmetryLabel::Balanced => {}
+                                if let Some(suffix) = fl.asymmetry_compact_suffix() {
+                                    let color = match a.asymmetry {
+                                        crate::flow::AsymmetryLabel::AtoBHeavy => Color::Cyan,
+                                        crate::flow::AsymmetryLabel::BtoAHeavy => Color::Magenta,
+                                        crate::flow::AsymmetryLabel::Balanced => c_muted(),
+                                    };
+                                    spans.push(Span::styled(format!(" {suffix}"), Style::default().fg(color)));
                                 }
                             }
 
@@ -1377,12 +1376,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     ];
 
                     // Asymmetry label.
-                    if let Some(analysis) = &fl.analysis {
-                        let label = match analysis.asymmetry {
-                            crate::flow::AsymmetryLabel::AtoBHeavy => "A->B-heavy",
-                            crate::flow::AsymmetryLabel::BtoAHeavy => "B->A-heavy",
-                            crate::flow::AsymmetryLabel::Balanced => "balanced",
-                        };
+                    if let Some(label) = fl.asymmetry_detail_label() {
                         out.push(Line::from(vec![
                             Span::styled("Direction: ", Style::default().fg(c_muted())),
                             Span::raw(label),
