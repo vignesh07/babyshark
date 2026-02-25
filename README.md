@@ -100,6 +100,10 @@ babyshark --help
   - TCP resets, handshake-not-completed, DNS failures, retransmit/OOO hints, high-latency flows
   - **Deprecated TLS** — flags flows using TLS 1.0 or 1.1
   - **Chatty hosts** — flags ≥10 flows to the same destination within 60 seconds
+- Timeline view (`T`):
+  - **Gantt** — phase-colored horizontal bars (handshake / TLS / data / close) with hostname labels
+  - **Scatter** — per-packet direction/retransmit dot plot
+  - Color legends, pattern callouts, and plain-English narrative in details
 - Notes/export:
   - bookmark flows
   - export markdown report (latest + timestamped copies)
@@ -258,6 +262,7 @@ What should I click?
 • Domains (human view)  (press D)
 • Weird stuff (troubleshoot)  (press W)
 • Flows (raw)  (press F)
+• Timeline (Gantt + Scatter)  (press T)
   ↳ Detected: High-latency flows (rough) (29 flows)
 ```
 
@@ -301,6 +306,39 @@ If a flow takes a long time and has lots of packets, it can indicate latency,
 congestion, or retries. This is a rough heuristic and depends on correct timestamps.
 ```
 
+### Timeline
+
+```text
+Timeline: Gantt  (Tab switch, ↑/↓ move, Enter packets, Esc back)
+█ handshake  █ TLS  █ data  █ close  █ UDP
+09:31:02        09:31:10        09:31:18        09:31:26
+
+  google.com (HTTPS)   ● ██████████████████████████████████
+  chat.openai.com (HT… ● ████████████████
+  wikipedia.org (HTTPS) ●  ██████████████████████████
+  DNS 10.0.0.1:53      ● ██
+Pattern: 3 connections opened simultaneously — likely a page load
+Pattern: 2 DNS lookups followed by 3 encrypted connections
+
+Details
+TCP 10.0.0.6:57608 ↔ 198.51.100.42:443
+
+What happened
+
+1. Connected to google.com (TCP handshake took 12.5ms)
+2. Negotiated encryption (TLS 1.3)
+3. Transferred 28.2KB in 89ms (40 packets)
+4. Mostly downloading (server sent more data)
+5. Connection closed cleanly (FIN)
+```
+
+**Timeline is the visual story of your capture.** It shows when each connection started, what phases it went through (handshake, TLS, data transfer, close), and how they overlap.
+
+- **Gantt** — horizontal bars colored by TCP phase, with hostname labels
+- **Scatter** — per-packet dots colored by direction (you→server, server→you, retransmit)
+- **Patterns** — automatic callouts for simultaneous opens, DNS-before-TLS sequences, retransmission warnings
+- **Narrative** — plain-English "What happened" in the details panel
+
 ### Flows
 
 ```text
@@ -334,6 +372,7 @@ Top-level:
 - `D` domains
 - `W` weird stuff
 - `F` flows
+- `T` timeline (Gantt + Scatter)
 - `h` help
 - `g` glossary
 - `q` quit
@@ -351,6 +390,12 @@ Flows view:
 - `t` / `u` toggle TCP / UDP
 - `b` bookmark flow
 - `E` export report
+
+Timeline view:
+- `Tab` / `Shift-Tab` switch Gantt / Scatter
+- `↑/↓` or `j/k` move
+- `PgUp/PgDn` page
+- `Enter` drill into Packets
 
 Packets view:
 - `f` follow stream

@@ -12,9 +12,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   - health badge (green/yellow/red)
   - directional asymmetry label
   - TCP timing metrics (handshake RTT, server think, transfer duration)
-- Timeline view (`G`) with two sub-tabs:
-  - Gantt (flow duration bars)
+- Timeline view (`T`) with two sub-tabs:
+  - Gantt (phase-colored flow duration bars: handshake / TLS / data / close)
   - Scatter (per-packet direction/retransmit markers)
+- Timeline educational features:
+  - Hostname labels instead of raw IPs (with HTTPS/HTTP/DNS port hints)
+  - Color legend explaining what each phase/dot color means
+  - Pattern callouts (simultaneous opens, DNS-before-TLS, retransmission warnings)
+  - Plain-English "What happened" narrative in details panel
 - Timeline keyboard controls and drilldown:
   - `Tab`/`Shift-Tab` switch Gantt/Scatter
   - `PgUp`/`PgDn` paging
