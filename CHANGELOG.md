@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-02-25
+
 ### Added
 - Linux Arch install instructions for `tshark` in README.
 
@@ -17,6 +19,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 - Live `tshark` capture now terminates when quitting the app (`q`) and on TUI teardown.
+- Rust compiler warnings in tests/fixtures and hints cleanup.
 
 ## [0.2.0] - 2026-02-23
 
@@ -60,6 +63,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Basic “weird” detectors (e.g., TCP resets, handshake not completed, latency-ish, reliability hints).
 - Export/reporting from Flows (`E`).
 
-[Unreleased]: https://github.com/vignesh07/babyshark/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/vignesh07/babyshark/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/vignesh07/babyshark/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/vignesh07/babyshark/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/vignesh07/babyshark/releases/tag/v0.1.0
