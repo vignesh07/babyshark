@@ -485,6 +485,7 @@ mod tests {
             dns_rcode: None,
             http_host: Some(host.to_string()),
             tls_sni: None,
+            tls_version: None,
         };
 
         // a.com appears on 2 distinct flows (different src ports); b.com only on 1.
@@ -532,6 +533,7 @@ mod tests {
             dns_rcode: None,
             http_host: Some(host.to_string()),
             tls_sni: None,
+            tls_version: None,
         };
 
         // a.com: 1 flow but lots of bytes; b.com: 2 flows but tiny.
@@ -579,6 +581,7 @@ mod tests {
             dns_rcode: rcode,
             http_host: None,
             tls_sni: None,
+            tls_version: None,
         };
 
         let rows = vec![mk(0, "live.example", Some(3)), mk(1, "ok.example", Some(0))];
@@ -621,6 +624,7 @@ mod tests {
             dns_rcode: None,
             http_host: None,
             tls_sni: None,
+            tls_version: None,
         };
 
         // a.com: 2 failures; b.com: 0 failures.

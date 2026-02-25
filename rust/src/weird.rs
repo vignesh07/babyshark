@@ -249,6 +249,7 @@ mod tests {
             dns_rcode: rcode,
             http_host: None,
             tls_sni: None,
+            tls_version: None,
         };
 
         // Flow 1: NXDOMAIN
@@ -297,6 +298,7 @@ mod tests {
             dns_rcode: None,
             http_host: None,
             tls_sni: None,
+            tls_version: None,
         };
 
         // 10 packets spanning 2000ms => should be flagged.
@@ -346,6 +348,7 @@ mod tests {
             dns_rcode: None,
             http_host: None,
             tls_sni: None,
+            tls_version: None,
         };
 
         let rows = vec![mk(0, true), mk(1, false)];

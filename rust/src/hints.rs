@@ -16,6 +16,9 @@ pub fn populate_hints(row: &mut PacketRow) {
     if row.tls_sni.is_none() {
         row.tls_sni = parse_tls_sni(&row.payload);
     }
+    if row.tls_version.is_none() {
+        row.tls_version = parse_tls_version(&row.payload);
+    }
 }
 
 fn parse_http_host(payload: &[u8]) -> Option<String> {
@@ -246,6 +249,34 @@ fn parse_tls_sni(payload: &[u8]) -> Option<String> {
     None
 }
 
+fn parse_tls_version(payload: &[u8]) -> Option<u16> {
+    // Extract the client_version from a TLS ClientHello.
+    // Record header (5 bytes) + handshake header (4 bytes) + client_version (2 bytes).
+    if payload.len() < 5 {
+        return None;
+    }
+    if payload[0] != 22 {
+        return None; // not a handshake record
+    }
+    let rec_len = u16::from_be_bytes([payload[3], payload[4]]) as usize;
+    if payload.len() < 5 + rec_len {
+        return None;
+    }
+    let mut off = 5;
+    if off + 4 > payload.len() {
+        return None;
+    }
+    if payload[off] != 1 {
+        return None; // not ClientHello
+    }
+    off += 4; // skip handshake header (type + 3-byte length)
+    if off + 2 > payload.len() {
+        return None;
+    }
+    let version = u16::from_be_bytes([payload[off], payload[off + 1]]);
+    Some(version)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -301,6 +332,7 @@ mod tests {
             dns_rcode: None,
             http_host: None,
             tls_sni: None,
+            tls_version: None,
         };
 
         populate_hints(&mut row);
@@ -309,5 +341,37 @@ mod tests {
 
         // sanity: direct parser agrees
         assert_eq!(parse_dns_rcode(&p), Some(3));
+    }
+
+    #[test]
+    fn tls_version_extracts_from_client_hello() {
+        // Minimal TLS 1.2 ClientHello (enough for version parsing).
+        // Record header: content_type=22 (handshake), version=0x0301, length=39
+        // Handshake header: type=1 (ClientHello), length=35
+        // ClientHello: client_version=0x0303 (TLS 1.2), random=32 bytes, session_id_len=0
+        let mut p: Vec<u8> = Vec::new();
+        // TLS record header
+        p.push(22); // content_type: handshake
+        p.extend_from_slice(&[0x03, 0x01]); // record version: TLS 1.0 (legacy)
+        p.extend_from_slice(&[0x00, 0x27]); // record length: 39 bytes
+        // Handshake header
+        p.push(1); // handshake type: ClientHello
+        p.extend_from_slice(&[0x00, 0x00, 0x23]); // handshake length: 35 bytes
+        // ClientHello body
+        p.extend_from_slice(&[0x03, 0x03]); // client_version: TLS 1.2
+        p.extend_from_slice(&[0u8; 32]); // random
+        p.push(0); // session_id length: 0
+
+        assert_eq!(parse_tls_version(&p), Some(0x0303));
+
+        // TLS 1.0 version
+        let mut p10 = p.clone();
+        p10[9] = 0x03;
+        p10[10] = 0x01;
+        assert_eq!(parse_tls_version(&p10), Some(0x0301));
+
+        // Not a handshake
+        assert_eq!(parse_tls_version(b"not tls"), None);
+        assert_eq!(parse_tls_version(&[]), None);
     }
 }

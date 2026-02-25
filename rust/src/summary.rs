@@ -256,6 +256,7 @@ mod tests {
             dns_rcode: None,
             http_host: None,
             tls_sni: None,
+            tls_version: None,
         };
 
         // 6 packets spread over ~3 seconds.
@@ -296,6 +297,7 @@ mod tests {
             dns_rcode: None,
             http_host: None,
             tls_sni: None,
+            tls_version: None,
         };
 
         // Flow A: 5 small packets.

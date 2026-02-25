@@ -84,6 +84,7 @@ pub struct PacketRow {
     pub dns_rcode: Option<u16>,
     pub http_host: Option<String>,
     pub tls_sni: Option<String>,
+    pub tls_version: Option<u16>,
 }
 
 fn ts_from_duration(d: std::time::Duration) -> DateTime<Utc> {
@@ -115,6 +116,7 @@ fn decode_packet(index: usize, ts: DateTime<Utc>, data: &[u8]) -> PacketRow {
         dns_rcode: None,
         http_host: None,
         tls_sni: None,
+        tls_version: None,
     };
 
     if let Ok(sliced) = SlicedPacket::from_ethernet(data) {

@@ -291,6 +291,7 @@ pub fn parse_tshark_fields_line(line: &str) -> Option<PacketRow> {
         }),
         http_host: http_host.map(|s| s.to_string()),
         tls_sni: tls_sni.map(|s| s.to_string()),
+        tls_version: None,
     };
 
     if let (Some(src), Some(dst), Some(proto), Some(sp), Some(dp)) =
