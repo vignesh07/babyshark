@@ -1389,7 +1389,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         TimelineTab::Scatter => "Scatter",
                     };
 
-                    let (axis, flow_rows) = timeline::build_timeline_items(
+                    let (headers, flow_rows) = timeline::build_timeline_items(
                         app,
                         app.timeline_tab,
                         bar_width,
@@ -1397,8 +1397,9 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         app.timeline_selected_row,
                     );
 
-                    // Update viewport for paging.
-                    app.timeline_viewport_rows = body_chunks[0].height.saturating_sub(4) as usize; // -2 border -1 axis -1 title
+                    let header_count = headers.len();
+                    // Update viewport for paging: subtract borders(2) + title(1) + header lines.
+                    app.timeline_viewport_rows = body_chunks[0].height.saturating_sub(3 + header_count as u16) as usize;
 
                     if !flow_rows.is_empty() {
                         app.timeline_selected_row = app.timeline_selected_row.min(flow_rows.len() - 1);
@@ -1418,9 +1419,11 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         app.timeline_scroll_row = 0;
                     }
 
-                    // Build items: axis header + visible flow rows
-                    let mut items: Vec<ListItem> = Vec::new();
-                    items.push(ListItem::new(axis).style(Style::default().fg(c_muted())));
+                    // Build items: header lines + visible flow rows
+                    let mut items: Vec<ListItem> = headers
+                        .into_iter()
+                        .map(|h| ListItem::new(h).style(Style::default()))
+                        .collect();
 
                     let visible: Vec<ListItem> = flow_rows
                         .into_iter()
@@ -1431,10 +1434,9 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     items.extend(visible);
 
                     let mut tl_state = ListState::default();
-                    if items.len() > 1 {
-                        // +1 for axis header
+                    if items.len() > header_count {
                         let rel = app.timeline_selected_row.saturating_sub(app.timeline_scroll_row);
-                        tl_state.select(Some((rel + 1).min(items.len() - 1)));
+                        tl_state.select(Some((rel + header_count).min(items.len() - 1)));
                     }
 
                     let list = List::new(items)
@@ -1557,6 +1559,14 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             "Tip: Enter opens Packets; ? explains; / filters flows.",
                             Style::default().fg(c_muted()),
                         )));
+                    }
+
+                    // Timeline narrative: plain-English story of what happened.
+                    if app.view == View::Timeline {
+                        let ip_host: std::collections::HashMap<std::net::IpAddr, String> =
+                            crate::domains::build_ip_hostname_index(&app.rows).into_iter().collect();
+                        out.push(Line::from(Span::raw("")));
+                        out.extend(timeline::build_narrative(fl, &app.rows, &ip_host));
                     }
 
                     out
