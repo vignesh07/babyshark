@@ -5,6 +5,7 @@ use chrono::Local;
 mod hexdump;
 mod modals;
 mod overview;
+mod timeline;
 use hexdump::{
     bytes_to_pretty_text, first_match_and_scroll, match_cap_suffix, match_ordinal,
     next_match_and_scroll, prev_match_and_scroll, STREAM_MATCH_HIGHLIGHT_CAP, UI_ONE_SPACE,
@@ -80,6 +81,13 @@ pub enum View {
     Domains,
     Packets,
     Stream,
+    Timeline,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimelineTab {
+    Gantt,
+    Scatter,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -169,6 +177,12 @@ pub struct App {
     pub stream_search: String,
     pub stream_last_match: Option<usize>,
     pub stream_match_count: usize,
+
+    // timeline view state
+    pub timeline_tab: TimelineTab,
+    pub timeline_selected_row: usize,
+    pub timeline_scroll_row: usize,
+    pub timeline_viewport_rows: usize,
 }
 
 impl App {
@@ -216,6 +230,10 @@ impl App {
             stream_search: String::new(),
             stream_last_match: None,
             stream_match_count: 0,
+            timeline_tab: TimelineTab::Gantt,
+            timeline_selected_row: 0,
+            timeline_scroll_row: 0,
+            timeline_viewport_rows: 0,
         };
         app.recompute_visible();
         app
@@ -299,6 +317,7 @@ impl App {
             View::Domains => View::Flows,
             View::Packets => View::Flows,
             View::Stream => View::Packets,
+            View::Timeline => View::Flows,
             View::Overview => View::Overview,
         };
         self.stream_scroll = 0;
@@ -717,6 +736,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                 View::Domains => "Domains",
                 View::Packets => "Packets",
                 View::Stream => "Follow Stream",
+                View::Timeline => "Timeline",
             };
 
             let mut filter_badge = format!(
@@ -1352,6 +1372,85 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         .scroll((app.stream_scroll, 0));
                     f.render_widget(p, body_chunks[0]);
                 }
+                View::Timeline => {
+                    let label_width = 20usize;
+                    let badge_width = 2usize;
+                    let border_pad = 3usize;
+                    let pane_width = body_chunks[0].width as usize;
+                    let bar_width = pane_width.saturating_sub(label_width + badge_width + border_pad);
+
+                    let tab_label = match app.timeline_tab {
+                        TimelineTab::Gantt => "Gantt",
+                        TimelineTab::Scatter => "Scatter",
+                    };
+
+                    let (axis, flow_rows) = timeline::build_timeline_items(
+                        app,
+                        app.timeline_tab,
+                        bar_width,
+                        label_width,
+                        app.timeline_selected_row,
+                    );
+
+                    // Update viewport for paging.
+                    app.timeline_viewport_rows = body_chunks[0].height.saturating_sub(4) as usize; // -2 border -1 axis -1 title
+
+                    if !flow_rows.is_empty() {
+                        app.timeline_selected_row = app.timeline_selected_row.min(flow_rows.len() - 1);
+                    }
+
+                    // Viewport scrolling
+                    let vp = app.timeline_viewport_rows.max(1);
+                    if app.timeline_scroll_row > app.timeline_selected_row {
+                        app.timeline_scroll_row = app.timeline_selected_row;
+                    }
+                    if app.timeline_selected_row >= app.timeline_scroll_row + vp {
+                        app.timeline_scroll_row = app.timeline_selected_row.saturating_sub(vp - 1);
+                    }
+                    if !flow_rows.is_empty() {
+                        app.timeline_scroll_row = app.timeline_scroll_row.min(flow_rows.len().saturating_sub(1));
+                    } else {
+                        app.timeline_scroll_row = 0;
+                    }
+
+                    // Build items: axis header + visible flow rows
+                    let mut items: Vec<ListItem> = Vec::new();
+                    items.push(ListItem::new(axis).style(Style::default().fg(c_muted())));
+
+                    let visible: Vec<ListItem> = flow_rows
+                        .into_iter()
+                        .skip(app.timeline_scroll_row)
+                        .take(vp)
+                        .map(ListItem::new)
+                        .collect();
+                    items.extend(visible);
+
+                    let mut tl_state = ListState::default();
+                    if items.len() > 1 {
+                        // +1 for axis header
+                        let rel = app.timeline_selected_row.saturating_sub(app.timeline_scroll_row);
+                        tl_state.select(Some((rel + 1).min(items.len() - 1)));
+                    }
+
+                    let list = List::new(items)
+                        .block(
+                            Block::default()
+                                .borders(Borders::ALL)
+                                .title(format!(
+                                    "Timeline: {tab_label}  (Tab switch, ↑/↓ move, Enter packets, Esc back)"
+                                ))
+                                .style(Style::default().bg(c_panel())),
+                        )
+                        .highlight_style(
+                            Style::default()
+                                .bg(c_highlight_bg())
+                                .fg(c_text())
+                                .add_modifier(Modifier::BOLD),
+                        )
+                        .highlight_symbol("❯ ");
+
+                    f.render_stateful_widget(list, body_chunks[0], &mut tl_state);
+                }
             }
 
             // Details panel (skip for views that own the right pane)
@@ -1581,6 +1680,20 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         Span::raw(" glossary  "),
                         Span::styled("Esc", Style::default().fg(Color::Green)),
                         Span::raw(" back/clear  "),
+                        Span::styled("q", Style::default().fg(Color::Green)),
+                        Span::raw(" quit"),
+                    ]),
+                    View::Timeline => Line::from(vec![
+                        Span::styled("Tab", Style::default().fg(Color::Green)),
+                        Span::raw(" gantt/scatter  "),
+                        Span::styled("↑/↓", Style::default().fg(Color::Green)),
+                        Span::raw(" move  "),
+                        Span::styled("PgUp/PgDn", Style::default().fg(Color::Green)),
+                        Span::raw(" page  "),
+                        Span::styled("Enter", Style::default().fg(Color::Green)),
+                        Span::raw(" packets  "),
+                        Span::styled("Esc", Style::default().fg(Color::Green)),
+                        Span::raw(" back  "),
                         Span::styled("q", Style::default().fg(Color::Green)),
                         Span::raw(" quit"),
                     ]),
@@ -1982,6 +2095,12 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         View::Stream => {
                             app.scroll_down();
                         }
+                        View::Timeline => {
+                            let sorted = timeline::timeline_sorted_indices(app);
+                            if !sorted.is_empty() {
+                                app.timeline_selected_row = (app.timeline_selected_row + 1).min(sorted.len() - 1);
+                            }
+                        }
                     },
                     KeyCode::Up | KeyCode::Char('k') => match app.view {
                         View::Overview => {
@@ -2012,6 +2131,9 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         }
                         View::Stream => {
                             app.scroll_up();
+                        }
+                        View::Timeline => {
+                            app.timeline_selected_row = app.timeline_selected_row.saturating_sub(1);
                         }
                     },
                     _ => {}
