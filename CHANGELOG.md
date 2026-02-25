@@ -7,6 +7,17 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+- Linux Arch install instructions for `tshark` in README.
+
+### Changed
+- Removed legacy Go scaffolding from the repo (Rust-only runtime path).
+- Refactored UI modal/help/explain/search rendering into a dedicated `ui/modals.rs` module.
+- Hardened live capture process handling and stream error reporting.
+
+### Fixed
+- Live `tshark` capture now terminates when quitting the app (`q`) and on TUI teardown.
+
 ## [0.2.0] - 2026-02-23
 
 ### Added
