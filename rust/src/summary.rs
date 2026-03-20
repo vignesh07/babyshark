@@ -130,11 +130,12 @@ pub fn build_overview(rows: &[PacketRow], flows: &FlowIndex, limit: usize) -> Ov
         }
     }
 
-    out.top_ports = ports
-        .into_iter()
-        .map(|(k, v)| (k as u16, v))
-        .collect();
-    out.top_ports.sort_by(|a, b| b.1.bytes.cmp(&a.1.bytes).then_with(|| b.1.packets.cmp(&a.1.packets)));
+    out.top_ports = ports.into_iter().map(|(k, v)| (k as u16, v)).collect();
+    out.top_ports.sort_by(|a, b| {
+        b.1.bytes
+            .cmp(&a.1.bytes)
+            .then_with(|| b.1.packets.cmp(&a.1.packets))
+    });
     out.top_ports.truncate(limit);
 
     let mut top_hosts: Vec<(IpAddr, HostCounts)> = hosts
@@ -142,11 +143,19 @@ pub fn build_overview(rows: &[PacketRow], flows: &FlowIndex, limit: usize) -> Ov
         .filter_map(|(k, v)| u64_to_ip(k).map(|ip| (ip, v)))
         .collect();
 
-    top_hosts.sort_by(|a, b| b.1.bytes.cmp(&a.1.bytes).then_with(|| b.1.packets.cmp(&a.1.packets)));
+    top_hosts.sort_by(|a, b| {
+        b.1.bytes
+            .cmp(&a.1.bytes)
+            .then_with(|| b.1.packets.cmp(&a.1.packets))
+    });
     out.top_hosts = top_hosts.clone();
     out.top_hosts.truncate(limit);
 
-    top_hosts.sort_by(|a, b| b.1.packets.cmp(&a.1.packets).then_with(|| b.1.bytes.cmp(&a.1.bytes)));
+    top_hosts.sort_by(|a, b| {
+        b.1.packets
+            .cmp(&a.1.packets)
+            .then_with(|| b.1.bytes.cmp(&a.1.bytes))
+    });
     out.top_hosts_by_packets = top_hosts;
     out.top_hosts_by_packets.truncate(limit);
 

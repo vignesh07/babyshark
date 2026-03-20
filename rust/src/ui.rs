@@ -103,9 +103,17 @@ pub enum Modal {
     Filter,
     Bookmark,
     StreamSearch,
+    AiSummaryConfirm,
+    AiSummaryProgress,
+    AiSummaryResult,
     Explain,
     Glossary,
     Help,
+}
+
+#[derive(Debug, Clone)]
+struct AiJobOutput {
+    summary: String,
 }
 
 pub struct App {
@@ -168,6 +176,10 @@ pub struct App {
     pub bookmark_note: String,
 
     pub modal: Modal,
+    ai_job_rx: Option<std::sync::mpsc::Receiver<std::result::Result<AiJobOutput, String>>>,
+    ai_job_started_at: Option<std::time::Instant>,
+    ai_notice: Option<String>,
+    ai_summary_text: Option<String>,
 
     // stream view state
     pub stream_tab: StreamTab,
@@ -225,6 +237,10 @@ impl App {
             filter: FlowFilter::default(),
             bookmark_note: String::new(),
             modal: Modal::None,
+            ai_job_rx: None,
+            ai_job_started_at: None,
+            ai_notice: None,
+            ai_summary_text: None,
             stream_tab: StreamTab::AtoB,
             stream_scroll: 0,
             stream_search: String::new(),
@@ -269,6 +285,40 @@ impl App {
         self.live_err_rx = None;
         if let Some(tx) = self.live_stop_tx.take() {
             let _ = tx.send(());
+        }
+    }
+
+    fn poll_ai_job(&mut self) {
+        let Some(rx) = self.ai_job_rx.as_ref() else {
+            return;
+        };
+
+        let msg = match rx.try_recv() {
+            Ok(msg) => msg,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.ai_notice = Some("AI summary job disconnected.".to_string());
+                self.ai_job_rx = None;
+                self.ai_job_started_at = None;
+                if self.modal == Modal::AiSummaryProgress {
+                    self.modal = Modal::None;
+                }
+                return;
+            }
+        };
+
+        self.ai_job_rx = None;
+        self.ai_job_started_at = None;
+        self.ai_notice = Some(match msg {
+            Ok(out) => {
+                self.ai_summary_text = Some(out.summary);
+                self.modal = Modal::AiSummaryResult;
+                "AI summary ready.".to_string()
+            }
+            Err(err) => format!("AI summary failed: {err}"),
+        });
+        if !matches!(self.modal, Modal::AiSummaryResult) {
+            self.modal = Modal::None;
         }
     }
 
@@ -508,6 +558,10 @@ impl App {
         self.bookmark_note.clear();
     }
 
+    fn open_ai_summary_confirm(&mut self) {
+        self.modal = Modal::AiSummaryConfirm;
+    }
+
     fn open_stream_search(&mut self) {
         self.modal = Modal::StreamSearch;
         self.stream_last_match = None;
@@ -551,6 +605,20 @@ impl App {
                     }
                 }
             }
+            Modal::AiSummaryConfirm => {
+                if let Err(err) = self.start_ai_summary_job() {
+                    self.ai_notice = Some(format!("AI summary failed to start: {err}"));
+                    self.modal = Modal::None;
+                    return;
+                }
+                return;
+            }
+            Modal::AiSummaryProgress => {
+                // read-only while background job runs
+            }
+            Modal::AiSummaryResult => {
+                // read-only modal
+            }
             Modal::Explain => {
                 // no-op; explain modal has nothing to apply
             }
@@ -571,6 +639,9 @@ impl App {
             self.stream_match_count = 0;
             self.stream_scroll = 0;
         }
+        if self.modal == Modal::AiSummaryProgress {
+            self.ai_notice = Some("AI summary still running in background.".to_string());
+        }
         self.modal = Modal::None;
     }
 
@@ -589,6 +660,15 @@ impl App {
                 self.stream_scroll = 0;
 
                 self.refresh_stream_match_count();
+            }
+            Modal::AiSummaryConfirm => {
+                // read-only modal
+            }
+            Modal::AiSummaryProgress => {
+                // read-only modal
+            }
+            Modal::AiSummaryResult => {
+                // read-only modal
             }
             Modal::Explain => {
                 // read-only modal
@@ -619,6 +699,15 @@ impl App {
 
                 self.refresh_stream_match_count();
             }
+            Modal::AiSummaryConfirm => {
+                // read-only modal
+            }
+            Modal::AiSummaryProgress => {
+                // read-only modal
+            }
+            Modal::AiSummaryResult => {
+                // read-only modal
+            }
             Modal::Explain => {
                 // read-only modal
             }
@@ -646,6 +735,15 @@ impl App {
                 self.stream_last_match = None;
                 self.stream_match_count = 0;
                 self.stream_scroll = 0;
+            }
+            Modal::AiSummaryConfirm => {
+                // read-only modal
+            }
+            Modal::AiSummaryProgress => {
+                // read-only modal
+            }
+            Modal::AiSummaryResult => {
+                // read-only modal
             }
             Modal::Explain => {
                 // read-only modal
@@ -693,6 +791,47 @@ impl App {
             crate::report::ReportOptions::default(),
         )
     }
+
+    fn start_ai_summary_job(&mut self) -> Result<()> {
+        if self.ai_job_rx.is_some() {
+            self.modal = Modal::AiSummaryProgress;
+            return Ok(());
+        }
+        if !crate::ai::has_api_key() {
+            return Err(anyhow::anyhow!("OPENAI_API_KEY is not set"));
+        }
+
+        let selected = self.selected_flow().cloned();
+        let opts = crate::ai::AiSummaryOptions::default();
+        let snapshot = crate::ai::build_snapshot(
+            &self.pcap_path,
+            &self.rows,
+            &self.flows,
+            &self.filter,
+            self.subset_label.as_deref(),
+            selected.as_ref(),
+            opts.top_n,
+        );
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.ai_job_rx = Some(rx);
+        self.ai_job_started_at = Some(std::time::Instant::now());
+        self.ai_notice = Some("AI summary started.".to_string());
+        self.ai_summary_text = None;
+        self.modal = Modal::AiSummaryProgress;
+
+        std::thread::spawn(move || {
+            let result = (|| -> Result<AiJobOutput> {
+                let summary = crate::ai::request_ai_summary(&snapshot, &opts)?;
+                let _ = (snapshot, opts);
+                Ok(AiJobOutput { summary })
+            })();
+
+            let _ = tx.send(result.map_err(|e| e.to_string()));
+        });
+
+        Ok(())
+    }
 }
 
 pub fn run_tui(app: &mut App) -> Result<()> {
@@ -721,6 +860,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
 
     loop {
         app.poll_live();
+        app.poll_ai_job();
 
         terminal.draw(|f| {
             let size = f.area();
@@ -756,6 +896,9 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
             );
             if let Some(lbl) = &app.subset_label {
                 filter_badge.push_str(&format!("  subset={lbl}"));
+            }
+            if app.ai_job_rx.is_some() {
+                filter_badge.push_str("  ai=running");
             }
 
             let header = Paragraph::new(Line::from(vec![
@@ -1176,11 +1319,11 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                                 .borders(Borders::ALL)
                                 .title(if let Some(iface) = &app.live_iface {
                                     format!(
-                                        "Flows [LIVE {iface}] ({:.1} pps)  (Enter packets, / filter, t/u toggles, b bookmark, E export, o overview)",
+                                        "Flows [LIVE {iface}] ({:.1} pps)  (Enter packets, / filter, t/u toggles, b bookmark, E export, A AI, o overview)",
                                         app.live_pps
                                     )
                                 } else {
-                                    "Flows  (Enter packets, / filter, t/u toggles, b bookmark, E export, o overview)".to_string()
+                                    "Flows  (Enter packets, / filter, t/u toggles, b bookmark, E export, A AI, o overview)".to_string()
                                 })
                                 .style(Style::default().bg(c_panel())),
                         )
@@ -1551,6 +1694,16 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         Span::styled("bookmarks: ", Style::default().fg(c_muted())),
                         Span::raw(format!("{bookmarks}")),
                     ]));
+                    if app.view == View::Flows {
+                        out.push(Line::from(Span::raw("")));
+                        out.push(Line::from(vec![
+                            Span::styled("AI: ", Style::default().fg(c_muted())),
+                            Span::styled(
+                                "press A for an AI traffic summary",
+                                Style::default().fg(c_text()),
+                            ),
+                        ]));
+                    }
 
                     if app.learning_mode {
                         out.push(Line::from(Span::raw("")));
@@ -1609,6 +1762,21 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                     Span::raw(UI_SPACER),
                     Span::styled("type query, Enter apply, Esc/Backspace cancel, Ctrl+u clear", Style::default().fg(c_muted())),
                 ]),
+                Modal::AiSummaryConfirm => Line::from(vec![
+                    Span::styled("AI", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
+                    Span::raw(UI_SPACER),
+                    Span::styled("Enter start, Esc cancel", Style::default().fg(c_muted())),
+                ]),
+                Modal::AiSummaryProgress => Line::from(vec![
+                    Span::styled("AI", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
+                    Span::raw(UI_SPACER),
+                    Span::styled("working in background, Esc hide, q quit", Style::default().fg(c_muted())),
+                ]),
+                Modal::AiSummaryResult => Line::from(vec![
+                    Span::styled("AI", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
+                    Span::raw(UI_SPACER),
+                    Span::styled("Esc close", Style::default().fg(c_muted())),
+                ]),
                 Modal::Explain => Line::from(vec![
                     Span::styled("EXPLAIN", Style::default().fg(c_accent()).add_modifier(Modifier::BOLD)),
                     Span::raw(UI_SPACER),
@@ -1634,6 +1802,11 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         Span::raw(" domains  "),
                         Span::styled("q", Style::default().fg(Color::Green)),
                         Span::raw(" quit"),
+                        if let Some(note) = &app.ai_notice {
+                            Span::styled(format!("  |  {note}"), Style::default().fg(c_muted()))
+                        } else {
+                            Span::raw("")
+                        },
                     ]),
                     View::Weird => Line::from(vec![
                         Span::styled("↑/↓", Style::default().fg(Color::Green)),
@@ -1646,6 +1819,11 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         Span::raw(" back  "),
                         Span::styled("q", Style::default().fg(Color::Green)),
                         Span::raw(" quit"),
+                        if let Some(note) = &app.ai_notice {
+                            Span::styled(format!("  |  {note}"), Style::default().fg(c_muted()))
+                        } else {
+                            Span::raw("")
+                        },
                     ]),
                     View::Domains => Line::from(vec![
                         Span::styled("↑/↓", Style::default().fg(Color::Green)),
@@ -1658,6 +1836,11 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         Span::raw(" back  "),
                         Span::styled("q", Style::default().fg(Color::Green)),
                         Span::raw(" quit"),
+                        if let Some(note) = &app.ai_notice {
+                            Span::styled(format!("  |  {note}"), Style::default().fg(c_muted()))
+                        } else {
+                            Span::raw("")
+                        },
                     ]),
                     View::Flows => Line::from(vec![
                         Span::styled("↑/↓", Style::default().fg(Color::Green)),
@@ -1672,10 +1855,17 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         Span::raw(" bookmark  "),
                         Span::styled("E", Style::default().fg(Color::Green)),
                         Span::raw(" export  "),
+                        Span::styled("A", Style::default().fg(Color::Green)),
+                        Span::raw(" AI summary  "),
                         Span::styled("c", Style::default().fg(Color::Green)),
                         Span::raw(" clear weird  "),
                         Span::styled("q", Style::default().fg(Color::Green)),
                         Span::raw(" quit"),
+                        if let Some(note) = &app.ai_notice {
+                            Span::styled(format!("  |  {note}"), Style::default().fg(c_muted()))
+                        } else {
+                            Span::raw("")
+                        },
                     ]),
                     View::Packets => Line::from(vec![
                         Span::styled("↑/↓", Style::default().fg(Color::Green)),
@@ -1688,6 +1878,11 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         Span::raw(" back  "),
                         Span::styled("q", Style::default().fg(Color::Green)),
                         Span::raw(" quit"),
+                        if let Some(note) = &app.ai_notice {
+                            Span::styled(format!("  |  {note}"), Style::default().fg(c_muted()))
+                        } else {
+                            Span::raw("")
+                        },
                     ]),
                     View::Stream => Line::from(vec![
                         Span::styled("/", Style::default().fg(Color::Green)),
@@ -1704,6 +1899,11 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         Span::raw(" back/clear  "),
                         Span::styled("q", Style::default().fg(Color::Green)),
                         Span::raw(" quit"),
+                        if let Some(note) = &app.ai_notice {
+                            Span::styled(format!("  |  {note}"), Style::default().fg(c_muted()))
+                        } else {
+                            Span::raw("")
+                        },
                     ]),
                     View::Timeline => Line::from(vec![
                         Span::styled("Tab", Style::default().fg(Color::Green)),
@@ -1718,6 +1918,11 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         Span::raw(" back  "),
                         Span::styled("q", Style::default().fg(Color::Green)),
                         Span::raw(" quit"),
+                        if let Some(note) = &app.ai_notice {
+                            Span::styled(format!("  |  {note}"), Style::default().fg(c_muted()))
+                        } else {
+                            Span::raw("")
+                        },
                     ]),
                 },
             };
@@ -1742,6 +1947,23 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         app.stream_match_count,
                         app.stream_last_match.is_some(),
                     );
+                }
+                Modal::AiSummaryConfirm => {
+                    let elapsed = app
+                        .ai_job_started_at
+                        .map(|t| t.elapsed().as_secs())
+                        .unwrap_or(0);
+                    modals::render_ai_summary_confirm_modal(f, size, app, elapsed);
+                }
+                Modal::AiSummaryProgress => {
+                    let elapsed = app
+                        .ai_job_started_at
+                        .map(|t| t.elapsed().as_secs())
+                        .unwrap_or(0);
+                    modals::render_ai_summary_progress_modal(f, size, app, elapsed);
+                }
+                Modal::AiSummaryResult => {
+                    modals::render_ai_summary_result_modal(f, size, app);
                 }
                 Modal::Explain => {
                     let lines = build_explain_lines(app);
@@ -1906,6 +2128,11 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             let _ = app.export_report();
                         }
                     }
+                    KeyCode::Char('A') => {
+                        if app.view == View::Flows {
+                            app.open_ai_summary_confirm();
+                        }
+                    }
                     KeyCode::Char('c') => {
                         if matches!(app.view, View::Flows | View::Weird | View::Domains) {
                             app.flow_subset = None;
@@ -2043,7 +2270,9 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                             let sorted = timeline::timeline_sorted_indices(app);
                             if let Some(&flow_idx) = sorted.get(app.timeline_selected_row) {
                                 // Find this flow in visible_flow_indices to set selected_row
-                                if let Some(pos) = app.visible_flow_indices.iter().position(|&i| i == flow_idx) {
+                                if let Some(pos) =
+                                    app.visible_flow_indices.iter().position(|&i| i == flow_idx)
+                                {
                                     app.selected_row = pos;
                                     flow_state.select(Some(app.selected_row));
                                     app.open_packets();
@@ -2160,7 +2389,8 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
                         View::Timeline => {
                             let sorted = timeline::timeline_sorted_indices(app);
                             if !sorted.is_empty() {
-                                app.timeline_selected_row = (app.timeline_selected_row + 1).min(sorted.len() - 1);
+                                app.timeline_selected_row =
+                                    (app.timeline_selected_row + 1).min(sorted.len() - 1);
                             }
                         }
                     },
@@ -2329,8 +2559,14 @@ mod tests {
             },
             total_packets: 2,
             total_bytes: 100,
-            a_to_b: DirStats { packets: 1, bytes: 50 },
-            b_to_a: DirStats { packets: 1, bytes: 50 },
+            a_to_b: DirStats {
+                packets: 1,
+                bytes: 50,
+            },
+            b_to_a: DirStats {
+                packets: 1,
+                bytes: 50,
+            },
             packet_indices: vec![],
             analysis: None,
             first_ts: Some(Utc.timestamp_millis_opt(300).unwrap()),
@@ -2346,8 +2582,14 @@ mod tests {
             },
             total_packets: 2,
             total_bytes: 100,
-            a_to_b: DirStats { packets: 1, bytes: 50 },
-            b_to_a: DirStats { packets: 1, bytes: 50 },
+            a_to_b: DirStats {
+                packets: 1,
+                bytes: 50,
+            },
+            b_to_a: DirStats {
+                packets: 1,
+                bytes: 50,
+            },
             packet_indices: vec![],
             analysis: None,
             first_ts: Some(Utc.timestamp_millis_opt(100).unwrap()),

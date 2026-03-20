@@ -104,8 +104,11 @@ pub enum DomainsSort {
     Failures,
 }
 
-pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex, sort: DomainsSort) -> DomainsSummary {
-
+pub fn build_domains_summary(
+    rows: &[PacketRow],
+    flows: &FlowIndex,
+    sort: DomainsSort,
+) -> DomainsSummary {
     let mut map: BTreeMap<String, DomainStats> = BTreeMap::new();
     let mut conns: BTreeMap<String, BTreeSet<usize>> = BTreeMap::new();
 
@@ -171,10 +174,16 @@ pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex, sort: Domain
         // HTTP Host hint (plaintext)
         if let Some(host) = &r.http_host {
             if let Some(dst) = r.dst {
-                map.entry(host.clone()).or_default().observed_ips.insert(dst);
+                map.entry(host.clone())
+                    .or_default()
+                    .observed_ips
+                    .insert(dst);
             }
             if let Some(src) = r.src {
-                map.entry(host.clone()).or_default().observed_ips.insert(src);
+                map.entry(host.clone())
+                    .or_default()
+                    .observed_ips
+                    .insert(src);
             }
             if let Some(fk) = &r.flow {
                 let (canon, _flipped) = fk.canonical();
@@ -216,7 +225,8 @@ pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex, sort: Domain
                 .iter()
                 .enumerate()
                 .filter(|(_i, f)| {
-                    stats.observed_ips.contains(&f.key.src) || stats.observed_ips.contains(&f.key.dst)
+                    stats.observed_ips.contains(&f.key.src)
+                        || stats.observed_ips.contains(&f.key.dst)
                 })
                 .map(|(i, _)| i)
                 .collect()
@@ -225,7 +235,9 @@ pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex, sort: Domain
                 .flows
                 .iter()
                 .enumerate()
-                .filter(|(_i, f)| stats.dns_ips.contains(&f.key.src) || stats.dns_ips.contains(&f.key.dst))
+                .filter(|(_i, f)| {
+                    stats.dns_ips.contains(&f.key.src) || stats.dns_ips.contains(&f.key.dst)
+                })
                 .map(|(i, _)| i)
                 .collect()
         } else {
@@ -245,7 +257,12 @@ pub fn build_domains_summary(rows: &[PacketRow], flows: &FlowIndex, sort: Domain
         let conn_set = conns.get(&domain);
         stats.connections = conn_set.map(|s| s.len() as u64).unwrap_or(0);
         stats.bytes = conn_set
-            .map(|s| s.iter().filter_map(|i| flows.flows.get(*i)).map(|f| f.total_bytes).sum())
+            .map(|s| {
+                s.iter()
+                    .filter_map(|i| flows.flows.get(*i))
+                    .map(|f| f.total_bytes)
+                    .sum()
+            })
             .unwrap_or(0);
 
         items.push(DomainItem {
@@ -645,13 +662,18 @@ mod tests {
         // flags: 0x8000 (response) | rcode
         let flags: u16 = 0x8000 | (rcode as u16);
         let mut b: Vec<u8> = vec![
-            0x00, 0x01, // id
+            0x00,
+            0x01, // id
             (flags >> 8) as u8,
             (flags & 0xff) as u8,
-            0x00, 0x01, // qdcount
-            0x00, 0x00, // ancount
-            0x00, 0x00, // nscount
-            0x00, 0x00, // arcount
+            0x00,
+            0x01, // qdcount
+            0x00,
+            0x00, // ancount
+            0x00,
+            0x00, // nscount
+            0x00,
+            0x00, // arcount
         ];
 
         for part in qname.split('.') {

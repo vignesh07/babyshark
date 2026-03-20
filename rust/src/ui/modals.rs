@@ -275,6 +275,9 @@ pub(super) fn build_help_lines() -> Vec<Line<'static>> {
             Span::styled("g", Style::default().fg(Color::Green)),
             Span::styled(" glossary", Style::default().fg(c_text())),
             Span::styled("   ", Style::default()),
+            Span::styled("A", Style::default().fg(Color::Green)),
+            Span::styled(" AI summary", Style::default().fg(c_text())),
+            Span::styled("   ", Style::default()),
             Span::styled("L", Style::default().fg(Color::Green)),
             Span::styled(" learning", Style::default().fg(c_text())),
         ]),
@@ -383,6 +386,190 @@ pub(super) fn render_search_modal(
 
     let p = Paragraph::new(lines)
         .wrap(Wrap { trim: true })
+        .style(Style::default().bg(c_panel()).fg(c_text()));
+    f.render_widget(p, inner);
+}
+
+pub(super) fn render_ai_summary_confirm_modal(
+    f: &mut ratatui::Frame,
+    size: ratatui::layout::Rect,
+    app: &App,
+    _elapsed_secs: u64,
+) {
+    let area = centered_rect(74, 34, size);
+    f.render_widget(Clear, area);
+    let inner = area.inner(Margin {
+        horizontal: 2,
+        vertical: 1,
+    });
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title("AI Summary")
+        .style(Style::default().bg(c_panel()).fg(c_text()));
+    f.render_widget(block, area);
+
+    let model = crate::ai::default_model();
+    let base_url = crate::ai::default_base_url();
+    let api_key_ok = crate::ai::has_api_key();
+    let key_status = crate::ai::api_key_status_label();
+
+    let lines = vec![
+        Line::from(vec![
+            Span::styled("OpenAI API key: ", Style::default().fg(c_muted())),
+            Span::styled(
+                key_status,
+                Style::default().fg(if api_key_ok { Color::Green } else { Color::Red }),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled("Model: ", Style::default().fg(c_muted())),
+            Span::styled(model, Style::default().fg(c_text())),
+        ]),
+        Line::from(vec![
+            Span::styled("Base URL: ", Style::default().fg(c_muted())),
+            Span::styled(base_url, Style::default().fg(c_text())),
+        ]),
+        Line::from(vec![
+            Span::styled("Capture: ", Style::default().fg(c_muted())),
+            Span::styled(
+                app.pcap_path.display().to_string(),
+                Style::default().fg(c_text()),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled("Flows in scope: ", Style::default().fg(c_muted())),
+            Span::styled(
+                app.visible_flow_indices.len().to_string(),
+                Style::default().fg(c_text()),
+            ),
+        ]),
+        Line::from(Span::raw("")),
+        Line::from(Span::styled(
+            "Babyshark sends a compact derived JSON snapshot, not the full pcap file.",
+            Style::default().fg(c_text()),
+        )),
+        Line::from(Span::styled(
+            "The AI summary stays in the TUI. It is not written to a file.",
+            Style::default().fg(c_muted()),
+        )),
+        Line::from(Span::raw("")),
+        Line::from(Span::styled(
+            if api_key_ok {
+                "Enter = start AI summary   Esc = cancel"
+            } else {
+                "Set OPENAI_API_KEY, then press A again. Esc = close"
+            },
+            Style::default().fg(c_muted()),
+        )),
+    ];
+
+    let p = Paragraph::new(lines)
+        .wrap(Wrap { trim: true })
+        .style(Style::default().bg(c_panel()).fg(c_text()));
+    f.render_widget(p, inner);
+}
+
+pub(super) fn render_ai_summary_progress_modal(
+    f: &mut ratatui::Frame,
+    size: ratatui::layout::Rect,
+    _app: &App,
+    elapsed_secs: u64,
+) {
+    let area = centered_rect(62, 24, size);
+    f.render_widget(Clear, area);
+    let inner = area.inner(Margin {
+        horizontal: 2,
+        vertical: 1,
+    });
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title("AI Summary")
+        .style(Style::default().bg(c_panel()).fg(c_text()));
+    f.render_widget(block, area);
+
+    let spinner = match elapsed_secs % 4 {
+        0 => "thinking   ",
+        1 => "thinking.  ",
+        2 => "thinking.. ",
+        _ => "thinking...",
+    };
+
+    let lines = vec![
+        Line::from(vec![
+            Span::styled("Status: ", Style::default().fg(c_muted())),
+            Span::styled(
+                spinner,
+                Style::default().fg(c_accent()).add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled("Elapsed: ", Style::default().fg(c_muted())),
+            Span::styled(format!("{elapsed_secs}s"), Style::default().fg(c_text())),
+        ]),
+        Line::from(vec![
+            Span::styled("Model: ", Style::default().fg(c_muted())),
+            Span::styled(crate::ai::default_model(), Style::default().fg(c_text())),
+        ]),
+        Line::from(Span::raw("")),
+        Line::from(Span::styled(
+            "The request is running in the background. You can press Esc to hide this modal.",
+            Style::default().fg(c_text()),
+        )),
+        Line::from(Span::styled(
+            "A completion or error message will appear in the footer when the job finishes.",
+            Style::default().fg(c_muted()),
+        )),
+    ];
+
+    let p = Paragraph::new(lines)
+        .wrap(Wrap { trim: true })
+        .style(Style::default().bg(c_panel()).fg(c_text()));
+    f.render_widget(p, inner);
+}
+
+pub(super) fn render_ai_summary_result_modal(
+    f: &mut ratatui::Frame,
+    size: ratatui::layout::Rect,
+    app: &App,
+) {
+    let area = centered_rect(82, 68, size);
+    f.render_widget(Clear, area);
+    let inner = area.inner(Margin {
+        horizontal: 2,
+        vertical: 1,
+    });
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title("AI Summary")
+        .style(Style::default().bg(c_panel()).fg(c_text()));
+    f.render_widget(block, area);
+
+    let mut lines = Vec::new();
+    if let Some(summary) = app.ai_summary_text.as_ref() {
+        for line in summary.lines() {
+            lines.push(Line::from(Span::styled(
+                line.to_string(),
+                Style::default().fg(c_text()),
+            )));
+        }
+    } else {
+        lines.push(Line::from(Span::styled(
+            "No AI summary text available.",
+            Style::default().fg(c_muted()),
+        )));
+    }
+
+    lines.push(Line::from(Span::raw("")));
+    lines.push(Line::from(Span::styled(
+        "Esc to close",
+        Style::default().fg(c_muted()),
+    )));
+
+    let p = Paragraph::new(lines)
+        .wrap(Wrap { trim: false })
         .style(Style::default().bg(c_panel()).fg(c_text()));
     f.render_widget(p, inner);
 }

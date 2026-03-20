@@ -429,9 +429,7 @@ fn ts_from_pcapng_epb(
         .unwrap_or(0)
         .saturating_add(ts_offset_secs.saturating_mul(1_000_000_000));
 
-    let secs: i64 = (nanos / 1_000_000_000)
-        .try_into()
-        .unwrap_or(0);
+    let secs: i64 = (nanos / 1_000_000_000).try_into().unwrap_or(0);
     let sub_nanos: u32 = (nanos % 1_000_000_000) as u32;
 
     DateTime::<Utc>::from_timestamp(secs, sub_nanos)

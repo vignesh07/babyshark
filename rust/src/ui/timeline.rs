@@ -253,10 +253,7 @@ pub(super) fn build_time_axis(
 /// Build a legend line explaining Gantt phase colors.
 pub(super) fn build_gantt_legend(label_width: usize) -> Line<'static> {
     let mut spans: Vec<Span> = Vec::new();
-    spans.push(Span::styled(
-        " ".repeat(label_width + 2),
-        Style::default(),
-    ));
+    spans.push(Span::styled(" ".repeat(label_width + 2), Style::default()));
     spans.push(Span::styled("█", Style::default().fg(C_PHASE_HANDSHAKE)));
     spans.push(Span::styled(" handshake  ", Style::default().fg(c_muted())));
     spans.push(Span::styled("█", Style::default().fg(C_PHASE_TLS)));
@@ -273,16 +270,22 @@ pub(super) fn build_gantt_legend(label_width: usize) -> Line<'static> {
 /// Build a legend line explaining Scatter dot colors.
 pub(super) fn build_scatter_legend(label_width: usize) -> Line<'static> {
     let mut spans: Vec<Span> = Vec::new();
-    spans.push(Span::styled(
-        " ".repeat(label_width + 2),
-        Style::default(),
-    ));
+    spans.push(Span::styled(" ".repeat(label_width + 2), Style::default()));
     spans.push(Span::styled("●", Style::default().fg(Color::Cyan)));
-    spans.push(Span::styled(" you→server  ", Style::default().fg(c_muted())));
+    spans.push(Span::styled(
+        " you→server  ",
+        Style::default().fg(c_muted()),
+    ));
     spans.push(Span::styled("●", Style::default().fg(Color::Magenta)));
-    spans.push(Span::styled(" server→you  ", Style::default().fg(c_muted())));
+    spans.push(Span::styled(
+        " server→you  ",
+        Style::default().fg(c_muted()),
+    ));
     spans.push(Span::styled("●", Style::default().fg(Color::Red)));
-    spans.push(Span::styled(" retransmit  ", Style::default().fg(c_muted())));
+    spans.push(Span::styled(
+        " retransmit  ",
+        Style::default().fg(c_muted()),
+    ));
     spans.push(Span::styled("█", Style::default().fg(Color::White)));
     spans.push(Span::styled(" burst", Style::default().fg(c_muted())));
     Line::from(spans)
@@ -335,17 +338,18 @@ fn friendly_label(
             format!("{h} ({port_hint})")
         }
     } else {
-        format!(
-            "{proto} {}:{}",
-            fl.key.dst, fl.key.dst_port
-        )
+        format!("{proto} {}:{}", fl.key.dst, fl.key.dst_port)
     };
 
     let full_chars = full.chars().count();
     if full_chars <= width {
         format!("{:<width$}", full, width = width)
     } else if width <= 1 {
-        if width == 0 { String::new() } else { "…".to_string() }
+        if width == 0 {
+            String::new()
+        } else {
+            "…".to_string()
+        }
     } else {
         let mut s: String = full.chars().take(width - 1).collect();
         s.push('…');
@@ -377,7 +381,10 @@ pub(super) fn build_gantt_row(
         Style::default().fg(c_text())
     };
 
-    spans.push(Span::styled(friendly_label(fl, ip_host, label_width), base_style));
+    spans.push(Span::styled(
+        friendly_label(fl, ip_host, label_width),
+        base_style,
+    ));
     spans.push(health_badge_span(fl));
 
     if bar_width < 2 {
@@ -481,7 +488,10 @@ pub(super) fn build_scatter_row(
         Style::default().fg(c_text())
     };
 
-    spans.push(Span::styled(friendly_label(fl, ip_host, label_width), base_style));
+    spans.push(Span::styled(
+        friendly_label(fl, ip_host, label_width),
+        base_style,
+    ));
     spans.push(health_badge_span(fl));
 
     if bar_width < 2 {
@@ -571,7 +581,11 @@ pub(super) fn build_scatter_row(
 // ── Narrative (plain-English timeline story) ────────────────────────────
 
 /// Build a plain-English narrative for a flow's timeline in the details panel.
-pub(super) fn build_narrative(fl: &FlowStats, rows: &[PacketRow], ip_host: &HashMap<std::net::IpAddr, String>) -> Vec<Line<'static>> {
+pub(super) fn build_narrative(
+    fl: &FlowStats,
+    rows: &[PacketRow],
+    ip_host: &HashMap<std::net::IpAddr, String>,
+) -> Vec<Line<'static>> {
     let mut out: Vec<Line> = Vec::new();
 
     let host = ip_host
@@ -596,11 +610,16 @@ pub(super) fn build_narrative(fl: &FlowStats, rows: &[PacketRow], ip_host: &Hash
         let mut steps: Vec<String> = Vec::new();
 
         if phases.syn_ts.is_some() && phases.syn_ack_ts.is_some() {
-            let rtt = fl.analysis.as_ref()
+            let rtt = fl
+                .analysis
+                .as_ref()
                 .and_then(|a| a.tcp_timing.as_ref())
                 .and_then(|t| t.handshake_rtt_us);
             if let Some(us) = rtt {
-                steps.push(format!("Connected to {host} (TCP handshake took {:.1}ms)", us as f64 / 1000.0));
+                steps.push(format!(
+                    "Connected to {host} (TCP handshake took {:.1}ms)",
+                    us as f64 / 1000.0
+                ));
             } else {
                 steps.push(format!("Connected to {host} (TCP handshake completed)"));
             }
@@ -609,9 +628,10 @@ pub(super) fn build_narrative(fl: &FlowStats, rows: &[PacketRow], ip_host: &Hash
         }
 
         if phases.has_tls {
-            let ver = fl.packet_indices.iter().find_map(|&pi| {
-                rows.get(pi).and_then(|r| r.tls_version)
-            });
+            let ver = fl
+                .packet_indices
+                .iter()
+                .find_map(|&pi| rows.get(pi).and_then(|r| r.tls_version));
             let ver_str = match ver {
                 Some(0x0304) => "TLS 1.3",
                 Some(0x0303) => "TLS 1.2",
@@ -625,14 +645,22 @@ pub(super) fn build_narrative(fl: &FlowStats, rows: &[PacketRow], ip_host: &Hash
 
         if phases.first_data_ts.is_some() {
             let kb = fl.total_bytes as f64 / 1024.0;
-            let duration = fl.analysis.as_ref()
+            let duration = fl
+                .analysis
+                .as_ref()
                 .and_then(|a| a.tcp_timing.as_ref())
                 .and_then(|t| t.data_transfer_us);
             if let Some(us) = duration {
-                steps.push(format!("Transferred {kb:.1}KB in {:.0}ms ({} packets)",
-                    us as f64 / 1000.0, fl.total_packets));
+                steps.push(format!(
+                    "Transferred {kb:.1}KB in {:.0}ms ({} packets)",
+                    us as f64 / 1000.0,
+                    fl.total_packets
+                ));
             } else {
-                steps.push(format!("Transferred {kb:.1}KB ({} packets)", fl.total_packets));
+                steps.push(format!(
+                    "Transferred {kb:.1}KB ({} packets)",
+                    fl.total_packets
+                ));
             }
         }
 
@@ -670,7 +698,9 @@ pub(super) fn build_narrative(fl: &FlowStats, rows: &[PacketRow], ip_host: &Hash
             match a.health {
                 HealthBadge::Green => {}
                 HealthBadge::Yellow => {
-                    steps.push("Warning: retransmissions detected (possible packet loss)".to_string());
+                    steps.push(
+                        "Warning: retransmissions detected (possible packet loss)".to_string(),
+                    );
                 }
                 HealthBadge::Red => {
                     steps.push("Problem: connection failed or was reset".to_string());
@@ -695,7 +725,10 @@ pub(super) fn build_narrative(fl: &FlowStats, rows: &[PacketRow], ip_host: &Hash
         // UDP
         let kb = fl.total_bytes as f64 / 1024.0;
         out.push(Line::from(Span::styled(
-            format!("UDP traffic to {host} — {kb:.1}KB across {} packets", fl.total_packets),
+            format!(
+                "UDP traffic to {host} — {kb:.1}KB across {} packets",
+                fl.total_packets
+            ),
             Style::default().fg(c_text()),
         )));
         if fl.key.dst_port == 443 {
@@ -814,13 +847,18 @@ pub(super) fn detect_patterns(
     const DNS_TLS_WINDOW_MS: i64 = 30_000;
 
     for &i in sorted_indices {
-        let Some(fl) = app.flows.flows.get(i) else { continue };
+        let Some(fl) = app.flows.flows.get(i) else {
+            continue;
+        };
         if fl.key.proto != L4Proto::Tcp || fl.key.dst_port != 443 {
             continue;
         }
         total_tls += 1;
         let Some(tls_ts) = fl.first_ts else { continue };
-        let Some(host) = ip_host.get(&fl.key.dst).or_else(|| ip_host.get(&fl.key.src)) else {
+        let Some(host) = ip_host
+            .get(&fl.key.dst)
+            .or_else(|| ip_host.get(&fl.key.src))
+        else {
             continue;
         };
 
@@ -842,7 +880,12 @@ pub(super) fn detect_patterns(
 
     if matched_tls > 0 {
         out.push(Line::from(vec![
-            Span::styled("Pattern: ", Style::default().fg(Color::Rgb(255, 215, 0)).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Pattern: ",
+                Style::default()
+                    .fg(Color::Rgb(255, 215, 0))
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(
                 format!(
                     "{} DNS lookups preceded {} encrypted connections to matching hosts",
@@ -856,7 +899,12 @@ pub(super) fn detect_patterns(
         let dns_count = dns_flows.len();
         if dns_count > 0 && total_tls > 0 {
             out.push(Line::from(vec![
-                Span::styled("Pattern: ", Style::default().fg(Color::Rgb(255, 215, 0)).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Pattern: ",
+                    Style::default()
+                        .fg(Color::Rgb(255, 215, 0))
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(
                     format!(
                         "{dns_count} DNS lookups and {total_tls} encrypted connections are present",
@@ -868,11 +916,22 @@ pub(super) fn detect_patterns(
     }
 
     // Pattern 3: Retransmissions visible
-    let retrans_flows: Vec<usize> = sorted_indices.iter().filter(|&&i| {
-        app.flows.flows.get(i).map(|f| {
-            f.analysis.as_ref().map(|a| a.health == HealthBadge::Yellow).unwrap_or(false)
-        }).unwrap_or(false)
-    }).copied().collect();
+    let retrans_flows: Vec<usize> = sorted_indices
+        .iter()
+        .filter(|&&i| {
+            app.flows
+                .flows
+                .get(i)
+                .map(|f| {
+                    f.analysis
+                        .as_ref()
+                        .map(|a| a.health == HealthBadge::Yellow)
+                        .unwrap_or(false)
+                })
+                .unwrap_or(false)
+        })
+        .copied()
+        .collect();
 
     if !retrans_flows.is_empty() {
         out.push(Line::from(vec![
@@ -925,12 +984,26 @@ pub(super) fn build_timeline_items(
             let fl = &app.flows.flows[flow_idx];
             let is_selected = i == selected_row;
             match tab {
-                TimelineTab::Gantt => {
-                    build_gantt_row(fl, &app.rows, &ip_host, capture_start, capture_end, bar_width, label_width, is_selected)
-                }
-                TimelineTab::Scatter => {
-                    build_scatter_row(fl, &app.rows, &ip_host, capture_start, capture_end, bar_width, label_width, is_selected)
-                }
+                TimelineTab::Gantt => build_gantt_row(
+                    fl,
+                    &app.rows,
+                    &ip_host,
+                    capture_start,
+                    capture_end,
+                    bar_width,
+                    label_width,
+                    is_selected,
+                ),
+                TimelineTab::Scatter => build_scatter_row(
+                    fl,
+                    &app.rows,
+                    &ip_host,
+                    capture_start,
+                    capture_end,
+                    bar_width,
+                    label_width,
+                    is_selected,
+                ),
             }
         })
         .collect();
@@ -1043,11 +1116,20 @@ mod tests {
         };
 
         // Before SYN-ACK = handshake
-        assert_eq!(col_phase(Utc.timestamp_millis_opt(25).unwrap(), &phases, true), Phase::Handshake);
+        assert_eq!(
+            col_phase(Utc.timestamp_millis_opt(25).unwrap(), &phases, true),
+            Phase::Handshake
+        );
         // After first_data = data
-        assert_eq!(col_phase(Utc.timestamp_millis_opt(200).unwrap(), &phases, true), Phase::Data);
+        assert_eq!(
+            col_phase(Utc.timestamp_millis_opt(200).unwrap(), &phases, true),
+            Phase::Data
+        );
         // At FIN = close
-        assert_eq!(col_phase(Utc.timestamp_millis_opt(600).unwrap(), &phases, true), Phase::Close);
+        assert_eq!(
+            col_phase(Utc.timestamp_millis_opt(600).unwrap(), &phases, true),
+            Phase::Close
+        );
     }
 
     #[test]
@@ -1062,9 +1144,15 @@ mod tests {
         };
 
         // Between SYN-ACK and first_data = TLS
-        assert_eq!(col_phase(Utc.timestamp_millis_opt(100).unwrap(), &phases, true), Phase::Tls);
+        assert_eq!(
+            col_phase(Utc.timestamp_millis_opt(100).unwrap(), &phases, true),
+            Phase::Tls
+        );
         // After first_data = data
-        assert_eq!(col_phase(Utc.timestamp_millis_opt(300).unwrap(), &phases, true), Phase::Data);
+        assert_eq!(
+            col_phase(Utc.timestamp_millis_opt(300).unwrap(), &phases, true),
+            Phase::Data
+        );
     }
 
     #[test]
@@ -1080,14 +1168,29 @@ mod tests {
         };
 
         // Before SYN-ACK = handshake
-        assert_eq!(col_phase(Utc.timestamp_millis_opt(25).unwrap(), &phases, true), Phase::Handshake);
+        assert_eq!(
+            col_phase(Utc.timestamp_millis_opt(25).unwrap(), &phases, true),
+            Phase::Handshake
+        );
         // At SYN-ACK = still handshake
-        assert_eq!(col_phase(Utc.timestamp_millis_opt(50).unwrap(), &phases, true), Phase::Handshake);
+        assert_eq!(
+            col_phase(Utc.timestamp_millis_opt(50).unwrap(), &phases, true),
+            Phase::Handshake
+        );
         // After SYN-ACK = data (NOT handshake)
-        assert_eq!(col_phase(Utc.timestamp_millis_opt(100).unwrap(), &phases, true), Phase::Data);
-        assert_eq!(col_phase(Utc.timestamp_millis_opt(400).unwrap(), &phases, true), Phase::Data);
+        assert_eq!(
+            col_phase(Utc.timestamp_millis_opt(100).unwrap(), &phases, true),
+            Phase::Data
+        );
+        assert_eq!(
+            col_phase(Utc.timestamp_millis_opt(400).unwrap(), &phases, true),
+            Phase::Data
+        );
         // At FIN = close
-        assert_eq!(col_phase(Utc.timestamp_millis_opt(600).unwrap(), &phases, true), Phase::Close);
+        assert_eq!(
+            col_phase(Utc.timestamp_millis_opt(600).unwrap(), &phases, true),
+            Phase::Close
+        );
     }
 
     #[test]
@@ -1114,8 +1217,14 @@ mod tests {
         ip_host.insert("93.184.216.34".parse().unwrap(), "example.com".to_string());
 
         let label = friendly_label(&fl, &ip_host, 25);
-        assert!(label.contains("example.com"), "Label should contain hostname, got: {label}");
-        assert!(label.contains("HTTPS"), "Label should show HTTPS for port 443, got: {label}");
+        assert!(
+            label.contains("example.com"),
+            "Label should contain hostname, got: {label}"
+        );
+        assert!(
+            label.contains("HTTPS"),
+            "Label should show HTTPS for port 443, got: {label}"
+        );
     }
 
     #[test]
@@ -1140,7 +1249,10 @@ mod tests {
 
         let ip_host = HashMap::new();
         let label = friendly_label(&fl, &ip_host, 25);
-        assert!(label.contains("1.2.3.4"), "Label should contain IP when no hostname, got: {label}");
+        assert!(
+            label.contains("1.2.3.4"),
+            "Label should contain IP when no hostname, got: {label}"
+        );
     }
 
     #[test]
@@ -1199,7 +1311,10 @@ mod tests {
             },
             total_packets: 3,
             total_bytes: 180,
-            a_to_b: DirStats { packets: 3, bytes: 180 },
+            a_to_b: DirStats {
+                packets: 3,
+                bytes: 180,
+            },
             b_to_a: DirStats::default(),
             packet_indices: vec![0, 1, 2],
             analysis: None,
@@ -1232,7 +1347,10 @@ mod tests {
             },
             total_packets: 1,
             total_bytes: 50,
-            a_to_b: DirStats { packets: 1, bytes: 50 },
+            a_to_b: DirStats {
+                packets: 1,
+                bytes: 50,
+            },
             b_to_a: DirStats::default(),
             packet_indices: vec![],
             analysis: None,
@@ -1276,8 +1394,14 @@ mod tests {
             },
             total_packets: 2,
             total_bytes: 120,
-            a_to_b: DirStats { packets: 1, bytes: 60 },
-            b_to_a: DirStats { packets: 1, bytes: 60 },
+            a_to_b: DirStats {
+                packets: 1,
+                bytes: 60,
+            },
+            b_to_a: DirStats {
+                packets: 1,
+                bytes: 60,
+            },
             packet_indices: vec![0, 1],
             analysis: None,
             first_ts: Some(Utc.timestamp_millis_opt(100).unwrap()),
@@ -1288,12 +1412,15 @@ mod tests {
         let line = build_scatter_row(&fl, &rows, &ip_host, start, end, 20, 18, false);
         let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
         let dot_count = text.chars().filter(|&c| c == '●').count();
-        assert!(dot_count >= 2, "Scatter row should have at least 2 markers, got {dot_count}");
+        assert!(
+            dot_count >= 2,
+            "Scatter row should have at least 2 markers, got {dot_count}"
+        );
     }
 
     #[test]
     fn narrative_for_tcp_flow_has_steps() {
-        use crate::flow::{DirStats, FlowStats, FlowAnalysis, HealthBadge, TcpTiming};
+        use crate::flow::{DirStats, FlowAnalysis, FlowStats, HealthBadge, TcpTiming};
         use crate::pcap::FlowKey;
 
         let rows = vec![
@@ -1325,7 +1452,10 @@ mod tests {
             },
             total_packets: 3,
             total_bytes: 180,
-            a_to_b: DirStats { packets: 3, bytes: 180 },
+            a_to_b: DirStats {
+                packets: 3,
+                bytes: 180,
+            },
             b_to_a: DirStats::default(),
             packet_indices: vec![0, 1, 2],
             analysis: Some(FlowAnalysis {
@@ -1345,10 +1475,20 @@ mod tests {
         ip_host.insert("93.184.216.34".parse().unwrap(), "example.com".to_string());
 
         let lines = build_narrative(&fl, &rows, &ip_host);
-        let text: String = lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
-        assert!(text.contains("example.com"), "Narrative should mention hostname");
+        let text: String = lines
+            .iter()
+            .map(|l| l.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            text.contains("example.com"),
+            "Narrative should mention hostname"
+        );
         assert!(text.contains("50.0ms"), "Narrative should mention RTT");
-        assert!(text.contains("Connected"), "Narrative should describe connection");
+        assert!(
+            text.contains("Connected"),
+            "Narrative should describe connection"
+        );
     }
 
     #[test]
@@ -1367,8 +1507,14 @@ mod tests {
             },
             total_packets: 1,
             total_bytes: 60,
-            a_to_b: DirStats { packets: 1, bytes: 40 },
-            b_to_a: DirStats { packets: 1, bytes: 20 },
+            a_to_b: DirStats {
+                packets: 1,
+                bytes: 40,
+            },
+            b_to_a: DirStats {
+                packets: 1,
+                bytes: 20,
+            },
             packet_indices: vec![0],
             analysis: Some(FlowAnalysis {
                 health: HealthBadge::Green,
@@ -1385,7 +1531,10 @@ mod tests {
             .map(|l| l.to_string())
             .collect::<Vec<_>>()
             .join("\n");
-        assert!(text.contains("A->B-heavy"), "Narrative should keep neutral canonical label");
+        assert!(
+            text.contains("A->B-heavy"),
+            "Narrative should keep neutral canonical label"
+        );
         assert!(
             !text.contains("Mostly downloading") && !text.contains("Mostly uploading"),
             "Narrative should not claim upload/download when side inference is ambiguous",
@@ -1420,7 +1569,10 @@ mod tests {
                 },
                 total_packets: 1,
                 total_bytes: 60,
-                a_to_b: DirStats { packets: 1, bytes: 60 },
+                a_to_b: DirStats {
+                    packets: 1,
+                    bytes: 60,
+                },
                 b_to_a: DirStats::default(),
                 packet_indices: vec![0],
                 analysis: None,
@@ -1437,7 +1589,10 @@ mod tests {
                 },
                 total_packets: 1,
                 total_bytes: 120,
-                a_to_b: DirStats { packets: 1, bytes: 120 },
+                a_to_b: DirStats {
+                    packets: 1,
+                    bytes: 120,
+                },
                 b_to_a: DirStats::default(),
                 packet_indices: vec![1],
                 analysis: None,
@@ -1446,7 +1601,11 @@ mod tests {
             },
         ];
 
-        let mut app = App::new("/tmp/t.pcap", vec![dns_row, tls_row], crate::flow::FlowIndex { flows });
+        let mut app = App::new(
+            "/tmp/t.pcap",
+            vec![dns_row, tls_row],
+            crate::flow::FlowIndex { flows },
+        );
         app.visible_flow_indices = vec![0, 1];
         let sorted = vec![0, 1];
 
@@ -1454,7 +1613,11 @@ mod tests {
         ip_host.insert("93.184.216.34".parse().unwrap(), "example.com".to_string());
 
         let lines = detect_patterns(&app, &sorted, &ip_host);
-        let text = lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
+        let text = lines
+            .iter()
+            .map(|l| l.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
         assert!(
             !text.contains("preceded"),
             "Should not claim DNS preceded TLS without hostname match: {text}",
@@ -1489,7 +1652,10 @@ mod tests {
                 },
                 total_packets: 1,
                 total_bytes: 60,
-                a_to_b: DirStats { packets: 1, bytes: 60 },
+                a_to_b: DirStats {
+                    packets: 1,
+                    bytes: 60,
+                },
                 b_to_a: DirStats::default(),
                 packet_indices: vec![0],
                 analysis: None,
@@ -1506,7 +1672,10 @@ mod tests {
                 },
                 total_packets: 1,
                 total_bytes: 120,
-                a_to_b: DirStats { packets: 1, bytes: 120 },
+                a_to_b: DirStats {
+                    packets: 1,
+                    bytes: 120,
+                },
                 b_to_a: DirStats::default(),
                 packet_indices: vec![1],
                 analysis: None,
@@ -1515,7 +1684,11 @@ mod tests {
             },
         ];
 
-        let mut app = App::new("/tmp/t.pcap", vec![dns_row, tls_row], crate::flow::FlowIndex { flows });
+        let mut app = App::new(
+            "/tmp/t.pcap",
+            vec![dns_row, tls_row],
+            crate::flow::FlowIndex { flows },
+        );
         app.visible_flow_indices = vec![0, 1];
         let sorted = vec![0, 1];
 
@@ -1523,7 +1696,14 @@ mod tests {
         ip_host.insert("93.184.216.34".parse().unwrap(), "example.com".to_string());
 
         let lines = detect_patterns(&app, &sorted, &ip_host);
-        let text = lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
-        assert!(text.contains("preceded"), "Expected DNS->TLS pattern callout, got: {text}");
+        let text = lines
+            .iter()
+            .map(|l| l.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            text.contains("preceded"),
+            "Expected DNS->TLS pattern callout, got: {text}"
+        );
     }
 }

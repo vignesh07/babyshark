@@ -86,7 +86,9 @@ fn classify_flow(rows: &[PacketRow], fl: &FlowStats) -> (String, Vec<String>, Ve
     }
 
     if fl.key.proto == L4Proto::Tcp && syn >= 2 && syn_ack == 0 {
-        why.push("Repeated SYNs but no SYN,ACK (could be blocked or capture is one-sided)".to_string());
+        why.push(
+            "Repeated SYNs but no SYN,ACK (could be blocked or capture is one-sided)".to_string(),
+        );
         next.push("Check if you captured both directions (same interface?)".to_string());
     }
 
