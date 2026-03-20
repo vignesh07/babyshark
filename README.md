@@ -107,7 +107,6 @@ babyshark --help
 - Notes/export:
   - bookmark flows
   - export markdown report (latest + timestamped copies)
-  - export AI summary markdown using OpenAI Responses API (`A` from Flows view)
 
 ---
 
@@ -236,33 +235,6 @@ babyshark --live en0 --dfilter "tcp.port==443"
 ```bash
 babyshark --live en0 --write-pcap /tmp/live.pcapng
 ```
-
-### AI summary export
-
-Set an API key, open the Flows view, then press `A`.
-
-```bash
-export OPENAI_API_KEY=your_key_here
-babyshark --pcap ./capture.pcap
-```
-
-Optional:
-- `BABYSHARK_OPENAI_MODEL` to override the default model (`gpt-5-mini`)
-- `BABYSHARK_OPENAI_BASE_URL` to use an OpenAI-compatible Responses endpoint hosted elsewhere
-
-Examples:
-
-```bash
-export OPENAI_API_KEY=your_key_here
-export BABYSHARK_OPENAI_MODEL=gpt-5-mini
-export BABYSHARK_OPENAI_BASE_URL=https://api.openai.com/v1
-```
-
-If `BABYSHARK_OPENAI_BASE_URL` is set without `/responses`, babyshark appends `/responses` automatically.
-
-Privacy note: the AI summary sends a compact derived JSON snapshot to OpenAI, not the full pcap file or raw packet payloads. The summary stays in the TUI.
-
----
 
 ## Example screens (sanitized)
 
@@ -444,9 +416,9 @@ When you bookmark/export, babyshark writes next to the PCAP in a hidden director
 
 ---
 
-## AI config
+## AI
 
-AI summary uses environment variables:
+AI summary stays in the TUI.
 
 ```bash
 export OPENAI_API_KEY=your_key_here
@@ -460,7 +432,7 @@ export BABYSHARK_OPENAI_BASE_URL=https://api.openai.com/v1
 
 If `BABYSHARK_OPENAI_BASE_URL` is set without `/responses`, babyshark adds it automatically.
 
-In Flows view, press `A` to open the AI summary flow.
+Open a capture, go to **Flows**, then press `A`.
 
 ---
 
